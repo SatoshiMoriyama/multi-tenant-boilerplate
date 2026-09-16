@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { Stack } from 'aws-cdk-lib/core';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
@@ -30,10 +31,15 @@ export class Edge extends Construct {
     const originId = 'ApiOrigin';
 
     // Host から X-Tenant-Id を付与する CloudFront Function（viewer-request）。
+    // CloudFront Function は実行時に環境変数を持てないため、config.baseDomain を
+    // デプロイ時にコードへ焼き込む（設定の単一ソース化）。
+    const resolverPath = path.join(__dirname, '..', 'functions', 'tenant-resolver.js');
+    const resolverCode = readFileSync(resolverPath, 'utf-8').replaceAll(
+      '__BASE_DOMAIN__',
+      props.baseDomain,
+    );
     this.tenantResolver = new cloudfront.Function(this, 'TenantResolver', {
-      code: cloudfront.FunctionCode.fromFile({
-        filePath: path.join(__dirname, '..', 'functions', 'tenant-resolver.js'),
-      }),
+      code: cloudfront.FunctionCode.fromInline(resolverCode),
       runtime: cloudfront.FunctionRuntime.JS_2_0,
     });
 

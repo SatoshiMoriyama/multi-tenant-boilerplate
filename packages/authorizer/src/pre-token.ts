@@ -8,7 +8,7 @@ const TENANT_ATTRIBUTE = process.env.TENANT_ATTRIBUTE ?? 'custom:tenantId';
  * 属性が未設定のユーザーは、トークンにクレームを追加しない（Authorizer 側で拒否される）。
  */
 export const handler: PreTokenGenerationTriggerHandler = async (event) => {
-  const tenantId = event.request.userAttributes[TENANT_ATTRIBUTE];
+  const tenantId = event.request.userAttributes?.[TENANT_ATTRIBUTE];
 
   if (tenantId) {
     event.response = {

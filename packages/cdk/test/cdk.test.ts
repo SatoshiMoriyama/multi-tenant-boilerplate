@@ -48,4 +48,21 @@ describe('BackendApiStack', () => {
       },
     });
   });
+
+  test('CloudFront Function に config.baseDomain が注入されプレースホルダが残らない', () => {
+    const app = new cdk.App();
+    const stack = new BackendApiStack(app, 'CustomDomainStack', {
+      config: { ...config, baseDomain: 'example.com' },
+      env: { account: '123456789012', region: 'ap-northeast-1' },
+    });
+    const template = Template.fromStack(stack);
+
+    const fns = template.findResources('AWS::CloudFront::Function');
+    const codes = Object.values(fns).map(
+      (r) => r.Properties.FunctionCode as string,
+    );
+    // config.baseDomain が焼き込まれ、未置換プレースホルダが残らない。
+    expect(codes.some((c) => c.includes("var baseDomain = 'example.com'"))).toBe(true);
+    expect(codes.some((c) => c.includes('__BASE_DOMAIN__'))).toBe(false);
+  });
 });
