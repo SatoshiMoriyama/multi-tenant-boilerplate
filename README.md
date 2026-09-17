@@ -1,80 +1,120 @@
-# 技術ブログワークスペース
+# マルチテナント Backend API ボイラープレート
 
-技術ブログ記事の執筆・校正とコード検証のためのワークスペースです。
+CloudFront マルチテナントディストリビューション（SaaS Manager）と Lambda Authorizer でテナント分離を実装した、バックエンド API のボイラープレートです。テナントごとにサブドメイン（`app.example.com` のような形）を切って配信し、Host 由来の tenantId と JWT 由来の tenantId を Lambda Authorizer で突き合わせてテナントを分離します。
 
-## 使い方
+## アーキテクチャ
 
-### 新しいブログ記事の開始
+```text
+[Client] https://{tenant}.example.com
+   |  HTTPS（ワイルドカード証明書 *.example.com）
+   v
+[CloudFront マルチテナントディストリビューション]
+   ├─ 親: multi-tenant distribution（共有ブループリント。単体では配信しない）
+   ├─ distribution tenant（テナント別。ドメイン = {tenant}.example.com）
+   ├─ connection group（ルーティングエンドポイント。テナント CNAME の向き先）
+   └─ CloudFront Function: Host から tenant を解決し X-Tenant-Id を付与
+   |  origin にシークレットヘッダー X-Origin-Verify を付与
+   v
+[API Gateway (REST API)]
+   |  REQUEST 型 Lambda Authorizer で認可、ANY /{proxy+} プロキシ統合
+   v
+[Lambda (Node.js + Hono / Lambda-lith)]
+```
 
-1. このリポジトリをテンプレートとして新しいブログ用リポジトリを作成するか、ローカル環境でこのフォルダ全体を別の場所にコピーして新しい作業ディレクトリを作成
+- **テナント識別**: CloudFront Function が Host（サブドメイン）から tenantId を解決し `X-Tenant-Id` を付与
+- **認可**: REQUEST 型 Lambda Authorizer が、オリジン検証（`X-Origin-Verify`）・JWT 検証・テナント一致検証をまとめて実施
+- **正となる tenantId**: Cognito の ID トークンに載る `custom:tenantId`（署名検証済み）。Host 由来と一致したときだけ通し、下流には JWT 由来の値だけを渡す
+- **テナント分離モード**: Lambda のテナント分離モード（tenant isolation mode）を既定で有効化。Authorizer が返す JWT 由来の tenantId を `X-Amz-Tenant-Id` にマッピングし、テナント単位に実行環境を分離
 
-2. **GitHub Settings Appをインストール**（テンプレートから作成した場合）
+設計の詳細は `blog_content/blog.md` を参照してください。
 
-   新しいリポジトリでPR設定を自動化するため、以下のURLからGitHub Settings Appをインストールしてください：
-   
-   ```
-   https://github.com/apps/settings
-   ```
-   
-   インストール後、`.github/settings.yml`の設定が自動的に適用され、以下が設定されます：
-   - ブランチ保護ルール（レビューコメント解決必須）
-   - マージ設定（Squash mergeのみ、マージ後ブランチ自動削除）
-   - セキュリティ設定（自動修正とアラート有効）
+## パッケージ構成
 
-3. 依存関係をインストール
+pnpm workspace のモノレポです。
 
-3. 依存関係をインストール
+- `packages/api/` - バックエンド API 本体（Hono / Lambda-lith）
+- `packages/authorizer/` - Lambda Authorizer と Cognito pre-token-generation trigger
+- `packages/cdk/` - AWS CDK（`BackendApiStack` とコンストラクト群）
+- `blog_content/` - 設計解説のブログ記事
+
+CDK は `packages/cdk/lib/` に、スタック本体とコンストラクト 5 つで構成しています。
+
+```text
+packages/cdk/lib/
+  backend-api-stack.ts  … BackendApiStack。各コンストラクトを組み立て
+  constructs/
+    auth.ts             … Cognito User Pool + App Client + pre-token trigger
+    api.ts              … API Gateway(REST) + Lambda 統合 + Authorizer 紐付け
+    authorizer.ts       … Lambda Authorizer（オリジン検証 + JWT + テナント一致）
+    edge.ts             … CloudFront 親ディストリビューション + CloudFront Function
+    tenants.ts          … distribution tenant / connection group（L1）+ Route53
+```
+
+## 前提
+
+- Node.js / pnpm
+- デプロイ先の AWS アカウントで CDK ブートストラップ済みであること
+- ワイルドカードの ACM 証明書（`*.example.com`）が **us-east-1** に存在すること（CloudFront 用）
+- テナントサブドメインを引く Route 53 ホストゾーンがあること
+
+検証は 2026 年 9 月時点、アジアパシフィック（東京）リージョン（`ap-northeast-1`）、`aws-cdk-lib` 2.232.1、AWS Lambda の Node.js ランタイム 22 で行いました。
+
+## デプロイ
+
+依存関係をインストールします。
 
 ```bash
 pnpm install
 ```
 
-4. セットアップスクリプトを実行
+必須の context を渡してデプロイします。`certificateArn` と `hostedZoneId` は環境固有値で、未指定だと synth / deploy がエラーになります。
 
 ```bash
-pnpm setup-blog your-blog-name
+cd packages/cdk
+npx cdk deploy \
+  -c certificateArn=arn:aws:acm:us-east-1:<account-id>:certificate/<cert-id> \
+  -c hostedZoneId=<Route53HostedZoneId> \
+  --profile <your-profile>
 ```
 
-例:
+context は `cdk.context.json` に置くか、デプロイ時に `-c` で渡します。
+
+| context | 必須 | 説明 |
+| --- | --- | --- |
+| `certificateArn` | ○ | CloudFront 用のワイルドカード ACM 証明書 ARN（us-east-1） |
+| `hostedZoneId` | ○ | テナント CNAME を作成する Route 53 ホストゾーン ID |
+| `baseDomain` | - | テナントサブドメインのベースドメイン（既定 `example.com`） |
+| `initialTenants` | - | 用意するテナントのサブドメイン一覧（既定 `["app"]`） |
+
+デプロイが終わると Outputs に `UserPoolId` / `UserPoolClientId` / `RestApiId` / `DistributionId` が出ます。動作確認の手順は `blog_content/blog.md` の「動かしてみる」を参照してください。
+
+ルートからは以下でも実行できます。
+
 ```bash
-pnpm setup-blog aws-lambda-tips
+pnpm cdk:deploy    # CDK デプロイ
+pnpm cdk:destroy   # CDK スタック削除
 ```
 
-5. `blog_content/blog.md` を編集してブログを書く
-
-### 利用可能なコマンド
+## 開発コマンド
 
 ```bash
-# Markdownのlint
-pnpm lint
-
-# Markdownのlint（自動修正）
-pnpm lint:fix
-
-# コードのlint
+# コードの lint
 pnpm code:lint
 
-# コードのlint（自動修正）
+# コードの lint（自動修正）
 pnpm code:fix
 
-# CDKデプロイ
-pnpm cdk:deploy
+# ブログ Markdown の lint
+pnpm lint
 
-# CDKスタック削除
-pnpm cdk:destroy
+# ブログ Markdown の lint（自動修正）
+pnpm lint:fix
 ```
 
-## 構成
+CDK パッケージ単体のビルド・テストは `packages/cdk` で実行します。
 
-- `blog_content/` - ブログ記事のMarkdownファイル
-- `packages/cdk/` - AWS CDKプロジェクト（サンプルコード用）
-- `.vscode/` - VSCode設定
-- `.kiro/` - Kiro設定とフック
-- `.github/settings.yml` - GitHub Settings App用の自動設定ファイル
-
-## 注意事項
-
-- セットアップスクリプトは以下を自動更新します：
-  - ルート `package.json` の name と description
-  - CDK プロジェクトの `packages/cdk/package.json` の name
-  - Kiro Hook の workspaceFolderName
+```bash
+cd packages/cdk
+pnpm build   # tsc
+pnpm test    # jest
+```
