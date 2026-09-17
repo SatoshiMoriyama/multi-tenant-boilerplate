@@ -1,8 +1,13 @@
 *.js
 !jest.config.js
+# CloudFront Function のソース（TS のビルド生成物ではなく手書きの .js）
+!lib/functions/*.js
 *.d.ts
 node_modules
 
 # CDK asset staging directory
 .cdk.staging
 cdk.out
+
+# 環境固有の値（ACM 証明書 ARN・ホストゾーンID など）。git 管理しない。
+cdk.context.json
