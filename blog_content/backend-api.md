@@ -11,12 +11,12 @@
 ## アーキテクチャ
 
 ```
-[Client] https://{tenant}.chelky.click
-   |  HTTPS（ワイルドカード証明書 *.chelky.click）
+[Client] https://{tenant}.example.com
+   |  HTTPS（ワイルドカード証明書 *.example.com）
    v
 [CloudFront マルチテナントディストリビューション]
    ├─ 親: multi-tenant distribution（共有ブループリント。単体では配信しない）
-   ├─ 子: distribution tenant（テナント別。ドメイン = {tenant}.chelky.click）
+   ├─ 子: distribution tenant（テナント別。ドメイン = {tenant}.example.com）
    ├─ connection group（ルーティングエンドポイント。テナントCNAMEの向き先）
    └─ CloudFront Function: Host から tenant を解決し X-Tenant-Id 付与
    |  origin + シークレットヘッダー X-Origin-Verify
@@ -51,8 +51,8 @@ JWT検証 + テナント一致検証 + オリジン検証 + テナントID供給
 - 処理: `X-Origin-Verify` とシークレットを突合（不一致は Deny）→ JWT検証（`aws-jwt-verify`）→ `custom:tenantId` 取得 → `X-Tenant-Id` と突合（不一致は Deny）→ `context.tenantId`（JWT由来）返却
 - 期待挙動: 直叩き（`X-Origin-Verify` なし）→ 401 / CloudFront経由・認証なし → Deny(403) / 正しいIDトークン+tenantId一致 → 200
 
-### 4. ドメイン/証明書: `{tenant}.chelky.click`
-ワイルドカード ACM 証明書 `*.chelky.click`（`us-east-1` 必須）は既存のものを `certificateArn` で参照し親に設定（CDKは証明書発行・DNS検証を行わない）。Route 53 も `hostedZoneId` で既存ゾーンを参照。テナント CNAME はオンボーディング時に CDK が作成。
+### 4. ドメイン/証明書: `{tenant}.example.com`
+ワイルドカード ACM 証明書 `*.example.com`（`us-east-1` 必須）は既存のものを `certificateArn` で参照し親に設定（CDKは証明書発行・DNS検証を行わない）。Route 53 も `hostedZoneId` で既存ゾーンを参照。テナント CNAME はオンボーディング時に CDK が作成。
 
 ### 5. CloudFront キャッシュ
 認証付きAPIはキャッシュ無効（`Authorization` 転送）。静的アセットのみ path pattern 別に有効化。
@@ -65,7 +65,7 @@ JWT検証 + テナント一致検証 + オリジン検証 + テナントID供給
 - **子**: L1 `CfnDistributionTenant`（`distributionId` / `domains` / `name` / `parameters` / `connectionGroupId` / 証明書・WAFは `customizations` 上書き）
 - **connection group**: L1 `CfnConnectionGroup`（省略時はデフォルト）
 - distribution tenant / connection group は **L1 のみ**。`name` は作成後変更不可
-- **tier**: Basic = 単一 pooled tenant + `*.chelky.click`（追加はDNSのみ）。Premium = tenant別に専用証明書/WAFで silo 化
+- **tier**: Basic = 単一 pooled tenant + `*.example.com`（追加はDNSのみ）。Premium = tenant別に専用証明書/WAFで silo 化
 
 ### 8. Lambda テナント分離モード（tier 別）
 `TenancyConfig.TenantIsolationMode: PER_TENANT` でテナントIDごとに実行環境（Firecracker）を分離。クロステナント漏洩を実行環境レベルで防ぐ。
@@ -104,7 +104,7 @@ cd packages/cdk
 npx cdk deploy \
   -c certificateArn=arn:aws:acm:us-east-1:<account-id>:certificate/<cert-id> \
   -c hostedZoneId=<Route53HostedZoneId> \
-  --profile chelky
+  --profile <your-profile>
 ```
 
 ### 1. テストユーザー作成
@@ -117,11 +117,11 @@ PASS='Test-Passw0rd!2026'
 # custom:tenantId=app を付けて作成（app = 検証対象テナントのサブドメイン）
 aws cognito-idp admin-create-user --user-pool-id "$POOL" --username "$USER" \
   --user-attributes Name=email,Value="$USER" Name=email_verified,Value=true Name=custom:tenantId,Value=app \
-  --message-action SUPPRESS --profile chelky
+  --message-action SUPPRESS --profile <your-profile>
 
 # 恒久パスワードを設定（FORCE_CHANGE_PASSWORD を解除）
 aws cognito-idp admin-set-user-password --user-pool-id "$POOL" --username "$USER" \
-  --password "$PASS" --permanent --profile chelky
+  --password "$PASS" --permanent --profile <your-profile>
 ```
 
 ### 2. IDトークン払い出し
@@ -134,13 +134,13 @@ CLIENT=<UserPoolClientId>
 # 検証用に admin パスワード認証フローを一時有効化
 aws cognito-idp update-user-pool-client --user-pool-id "$POOL" --client-id "$CLIENT" \
   --explicit-auth-flows ALLOW_ADMIN_USER_PASSWORD_AUTH ALLOW_USER_SRP_AUTH ALLOW_REFRESH_TOKEN_AUTH \
-  --profile chelky
+  --profile <your-profile>
 
 # IDトークン取得（tokenUse=id を検証しているのでアクセストークンではなく ID トークンを使う）
 ID_TOKEN=$(aws cognito-idp admin-initiate-auth --user-pool-id "$POOL" --client-id "$CLIENT" \
   --auth-flow ADMIN_USER_PASSWORD_AUTH \
   --auth-parameters USERNAME="$USER",PASSWORD="$PASS" \
-  --profile chelky --query 'AuthenticationResult.IdToken' --output text)
+  --profile <your-profile> --query 'AuthenticationResult.IdToken' --output text)
 
 # クレーム確認（custom:tenantId が入っていること）
 echo "$ID_TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | python3 -m json.tool
@@ -148,10 +148,10 @@ echo "$ID_TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | python3 
 
 ### 3. curl 検証（CloudFront 経由 = 正しい経路）
 
-`{tenant}.chelky.click`（例 `app.chelky.click`）に、`Authorization: Bearer <IDトークン>` を付けてアクセスする。`X-Tenant-Id` はクライアントが付けても CloudFront Function が Host から上書きするので送らなくてよい。
+`{tenant}.example.com`（例 `app.example.com`）に、`Authorization: Bearer <IDトークン>` を付けてアクセスする。`X-Tenant-Id` はクライアントが付けても CloudFront Function が Host から上書きするので送らなくてよい。
 
 ```bash
-BASE=https://app.chelky.click
+BASE=https://app.example.com
 
 # 正常系: 200
 curl -s -w '\n%{http_code}\n' -H "Authorization: Bearer $ID_TOKEN" "$BASE/health"   # {"status":"ok"}
