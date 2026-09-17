@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { tenantContext, type TenantEnv } from './middleware/tenant.js';
+import { type TenantEnv, tenantContext } from './middleware/tenant.js';
 
 /**
  * Lambda-lith の Hono アプリ。全ルートをこのアプリに集約する。
@@ -15,13 +15,14 @@ app.get('/health', (c) => {
 
 app.get('/me', (c) => {
   const tenantId = c.get('tenantId');
-  return c.json({ tenantId });
-});
-
-// サンプル: テナントスコープのリソース
-app.get('/items', (c) => {
-  const tenantId = c.get('tenantId');
-  return c.json({ tenantId, items: [] });
+  // 検証用にリクエストヘッダも返す。Authorization はトークンが平文で
+  // 入るためマスクする（値の有無だけ分かる形にする）。
+  const headers: Record<string, string> = {};
+  for (const [key, value] of c.req.raw.headers.entries()) {
+    headers[key] =
+      key.toLowerCase() === 'authorization' ? '***masked***' : value;
+  }
+  return c.json({ tenantId, headers });
 });
 
 app.notFound((c) => c.json({ message: 'Not Found' }, 404));

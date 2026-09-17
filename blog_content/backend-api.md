@@ -155,8 +155,7 @@ BASE=https://app.example.com
 
 # 正常系: 200
 curl -s -w '\n%{http_code}\n' -H "Authorization: Bearer $ID_TOKEN" "$BASE/health"   # {"status":"ok"}
-curl -s -w '\n%{http_code}\n' -H "Authorization: Bearer $ID_TOKEN" "$BASE/me"       # {"tenantId":"app"}
-curl -s -w '\n%{http_code}\n' -H "Authorization: Bearer $ID_TOKEN" "$BASE/items"    # {"tenantId":"app","items":[]}
+curl -s -w '\n%{http_code}\n' -H "Authorization: Bearer $ID_TOKEN" "$BASE/me"       # {"tenantId":"app","headers":{...,"authorization":"***masked***"}}
 
 # 認証なし: 401（identity source 不足で Authorizer 未起動）
 curl -s -o /dev/null -w '%{http_code}\n' "$BASE/health"
@@ -177,7 +176,7 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 
 # テナント詐称（CloudFront経由で X-Tenant-Id: other を送る）: CloudFront Function が app に上書き → 200
 # クライアントはテナントを詐称できず、アクセス元サブドメインのテナントに束縛される
-curl -s -w '\n%{http_code}\n' -H "Authorization: Bearer $ID_TOKEN" -H "X-Tenant-Id: other" "$BASE/me"  # {"tenantId":"app"}
+curl -s -w '\n%{http_code}\n' -H "Authorization: Bearer $ID_TOKEN" -H "X-Tenant-Id: other" "$BASE/me"  # tenantId は app（other は無視される）
 ```
 
 期待値: 直叩き=401 / 偽シークレット=403 / 認証なし=401 / 正常系=200 / 詐称=app に矯正。
