@@ -97,6 +97,16 @@ packages/
 
 デプロイ後のエンドツーエンド検証手順。`<...>` は `cdk deploy` の Outputs（`UserPoolId` / `UserPoolClientId` / `RestApiId`）に置き換える。
 
+`certificateArn` と `hostedZoneId` は必須 context。環境固有値なので `cdk.json` にはコミットせず、デプロイ時に `-c` で渡す（未指定なら synth/deploy が即エラーになる）。
+
+```bash
+cd packages/cdk
+npx cdk deploy \
+  -c certificateArn=arn:aws:acm:us-east-1:<account-id>:certificate/<cert-id> \
+  -c hostedZoneId=<Route53HostedZoneId> \
+  --profile chelky
+```
+
 ### 1. テストユーザー作成
 
 ```bash
