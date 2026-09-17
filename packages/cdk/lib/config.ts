@@ -3,10 +3,10 @@
  * cdk.json の context か、デプロイ時の -c で渡す。
  */
 export interface BackendApiConfig {
-  /** テナントサブドメインのベースドメイン（例: chelky.click） */
+  /** テナントサブドメインのベースドメイン（例: example.com） */
   readonly baseDomain: string;
   /**
-   * 既存のワイルドカード ACM 証明書 ARN（*.chelky.click）。
+   * 既存のワイルドカード ACM 証明書 ARN（*.example.com）。
    * us-east-1 に存在する前提。CloudFront に適用する。
    */
   readonly certificateArn: string;
@@ -19,7 +19,7 @@ export interface BackendApiConfig {
 }
 
 const DEFAULTS = {
-  baseDomain: 'chelky.click',
+  baseDomain: 'example.com',
   initialTenants: ['app'],
   enableTenantIsolation: false,
 } as const;
@@ -27,25 +27,38 @@ const DEFAULTS = {
 /**
  * cdk context から設定を読み出す。必須値が無ければ即エラー。
  */
-export function resolveConfig(getContext: (key: string) => unknown): BackendApiConfig {
+export function resolveConfig(
+  getContext: (key: string) => unknown,
+): BackendApiConfig {
   const certificateArn = getContext('certificateArn');
   const hostedZoneId = getContext('hostedZoneId');
 
   if (typeof certificateArn !== 'string' || certificateArn.length === 0) {
     throw new Error(
-      "context 'certificateArn' is required (existing *.chelky.click cert ARN in us-east-1)",
+      "context 'certificateArn' is required (existing *.example.com cert ARN in us-east-1)",
     );
   }
   if (typeof hostedZoneId !== 'string' || hostedZoneId.length === 0) {
-    throw new Error("context 'hostedZoneId' is required (Route 53 hosted zone id)");
+    throw new Error(
+      "context 'hostedZoneId' is required (Route 53 hosted zone id)",
+    );
   }
 
   const baseDomain = asString(getContext('baseDomain')) ?? DEFAULTS.baseDomain;
-  const initialTenants = asStringArray(getContext('initialTenants')) ?? [...DEFAULTS.initialTenants];
+  const initialTenants = asStringArray(getContext('initialTenants')) ?? [
+    ...DEFAULTS.initialTenants,
+  ];
   const enableTenantIsolation =
-    asBoolean(getContext('enableTenantIsolation')) ?? DEFAULTS.enableTenantIsolation;
+    asBoolean(getContext('enableTenantIsolation')) ??
+    DEFAULTS.enableTenantIsolation;
 
-  return { baseDomain, certificateArn, hostedZoneId, initialTenants, enableTenantIsolation };
+  return {
+    baseDomain,
+    certificateArn,
+    hostedZoneId,
+    initialTenants,
+    enableTenantIsolation,
+  };
 }
 
 function asString(value: unknown): string | undefined {
