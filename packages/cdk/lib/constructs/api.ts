@@ -11,8 +11,6 @@ const API_SRC = path.join(__dirname, '..', '..', '..', 'api', 'src');
 
 export interface ApiProps {
   readonly authorizer: apigateway.IAuthorizer;
-  /** Lambda テナント分離モードを有効化するか */
-  readonly enableTenantIsolation: boolean;
 }
 
 /**
@@ -40,8 +38,8 @@ export class Api extends Construct {
         retention: logs.RetentionDays.ONE_MONTH,
         removalPolicy: RemovalPolicy.DESTROY,
       }),
-      // テナント分離モードは関数作成時のみ設定可能。有効時のみ付与。
-      tenancyConfig: props.enableTenantIsolation ? lambda.TenancyConfig.PER_TENANT : undefined,
+      // テナント分離モード（関数作成時のみ設定可能）。テナント単位に実行環境を分離する。
+      tenancyConfig: lambda.TenancyConfig.PER_TENANT,
     });
 
     // 明示的な全許可リソースポリシー。
@@ -73,16 +71,13 @@ export class Api extends Construct {
 
     const integration = new apigateway.LambdaIntegration(this.handler, {
       proxy: true,
-      // テナント分離モード有効時のみ X-Amz-Tenant-Id を付与する。
-      // 分離モード OFF の Lambda にこのヘッダーを送ると 400 になるため、
-      // Basic(pooled) ではマッピングしない（テナント分離は Hono middleware で論理的に行う）。
-      requestParameters: props.enableTenantIsolation
-        ? {
-            // context.authorizer.tenantId(JWT由来) を Lambda 分離モードの
-            // X-Amz-Tenant-Id ヘッダーへマッピングする。
-            'integration.request.header.X-Amz-Tenant-Id': 'context.authorizer.tenantId',
-          }
-        : undefined,
+      // context.authorizer.tenantId(JWT由来) を Lambda 分離モードの
+      // X-Amz-Tenant-Id ヘッダーへマッピングする。分離モードの関数はこの
+      // ヘッダーが無いと invocation が失敗する。
+      requestParameters: {
+        'integration.request.header.X-Amz-Tenant-Id':
+          'context.authorizer.tenantId',
+      },
     });
 
     const methodOptions: apigateway.MethodOptions = {

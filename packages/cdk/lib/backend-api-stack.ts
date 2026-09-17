@@ -19,13 +19,18 @@ export class BackendApiStack extends Stack {
     const { config } = props;
 
     // CloudFront → API Gateway のオリジン検証シークレット。
-    const originVerifySecret = new secretsmanager.Secret(this, 'OriginVerifySecret', {
-      description: 'Shared secret to verify requests originate from CloudFront',
-      generateSecretString: {
-        excludePunctuation: true,
-        passwordLength: 32,
+    const originVerifySecret = new secretsmanager.Secret(
+      this,
+      'OriginVerifySecret',
+      {
+        description:
+          'Shared secret to verify requests originate from CloudFront',
+        generateSecretString: {
+          excludePunctuation: true,
+          passwordLength: 32,
+        },
       },
-    });
+    );
 
     const auth = new Auth(this, 'Auth');
 
@@ -37,7 +42,6 @@ export class BackendApiStack extends Stack {
 
     const api = new Api(this, 'Api', {
       authorizer: authorizer.authorizer,
-      enableTenantIsolation: config.enableTenantIsolation,
     });
 
     const edge = new Edge(this, 'Edge', {

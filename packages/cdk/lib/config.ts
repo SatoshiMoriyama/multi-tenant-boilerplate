@@ -14,14 +14,11 @@ export interface BackendApiConfig {
   readonly hostedZoneId: string;
   /** フェーズ1で用意する pooled テナントのサブドメイン一覧（例: ["app"]） */
   readonly initialTenants: readonly string[];
-  /** Lambda テナント分離モードを有効化するか（Premium相当） */
-  readonly enableTenantIsolation: boolean;
 }
 
 const DEFAULTS = {
   baseDomain: 'example.com',
   initialTenants: ['app'],
-  enableTenantIsolation: false,
 } as const;
 
 /**
@@ -48,16 +45,12 @@ export function resolveConfig(
   const initialTenants = asStringArray(getContext('initialTenants')) ?? [
     ...DEFAULTS.initialTenants,
   ];
-  const enableTenantIsolation =
-    asBoolean(getContext('enableTenantIsolation')) ??
-    DEFAULTS.enableTenantIsolation;
 
   return {
     baseDomain,
     certificateArn,
     hostedZoneId,
     initialTenants,
-    enableTenantIsolation,
   };
 }
 
@@ -69,12 +62,5 @@ function asStringArray(value: unknown): string[] | undefined {
   if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
     return value as string[];
   }
-  return undefined;
-}
-
-function asBoolean(value: unknown): boolean | undefined {
-  if (typeof value === 'boolean') return value;
-  if (value === 'true') return true;
-  if (value === 'false') return false;
   return undefined;
 }
