@@ -6,7 +6,14 @@ import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 
-const AUTHORIZER_SRC = path.join(__dirname, '..', '..', '..', 'authorizer', 'src');
+const AUTHORIZER_SRC = path.join(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  'authorizer',
+  'src',
+);
 
 export interface AuthProps {
   /** custom:tenantId 属性名（既定 custom:tenantId） */
@@ -47,7 +54,10 @@ export class Auth extends Construct {
       selfSignUpEnabled: false,
       signInAliases: { email: true },
       customAttributes: {
-        [bareAttribute]: new cognito.StringAttribute({ mutable: true }),
+        // テナント所属はサインアップ/管理者作成時に確定する不変属性。
+        // mutable: true だとユーザーが UpdateUserAttributes で別テナントへ移動でき、
+        // そのテナント用 JWT を取得できてしまうため false にする。
+        [bareAttribute]: new cognito.StringAttribute({ mutable: false }),
       },
       lambdaTriggers: {
         preTokenGeneration: preTokenFn,
