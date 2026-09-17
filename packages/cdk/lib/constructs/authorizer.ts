@@ -8,7 +8,14 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import type * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
-const AUTHORIZER_SRC = path.join(__dirname, '..', '..', '..', 'authorizer', 'src');
+const AUTHORIZER_SRC = path.join(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  'authorizer',
+  'src',
+);
 
 export interface AuthorizerProps {
   readonly userPool: cognito.IUserPool;
@@ -46,20 +53,24 @@ export class TenantAuthorizer extends Construct {
         USER_POOL_ID: props.userPool.userPoolId,
         USER_POOL_CLIENT_ID: props.userPoolClient.userPoolClientId,
         TENANT_CLAIM: props.tenantClaim ?? 'custom:tenantId',
-        ORIGIN_VERIFY_SECRET: props.originVerifySecret.secretValue.unsafeUnwrap(),
+        ORIGIN_VERIFY_SECRET:
+          props.originVerifySecret.secretValue.unsafeUnwrap(),
       },
     });
 
     this.authorizer = new apigateway.RequestAuthorizer(this, 'Authorizer', {
       handler: fn,
-      // Authorization / X-Tenant-Id / X-Origin-Verify の組でキャッシュ。
-      // いずれかが欠けると API Gateway が Authorizer を呼ばず 401 を返す。
+      // Authorization / X-Tenant-Id / X-Origin-Verify のいずれかが欠けると
+      // API Gateway が Authorizer を呼ばず 401 を返す。
       identitySources: [
         apigateway.IdentitySource.header('Authorization'),
         apigateway.IdentitySource.header('X-Tenant-Id'),
         apigateway.IdentitySource.header('X-Origin-Verify'),
       ],
-      resultsCacheTtl: Duration.minutes(5),
+      // キャッシュ無効。Allow ポリシーの Resource は event.methodArn（メソッド単位）で
+      // 返すため、キャッシュすると同じ identity source の組で別パスへ再利用され
+      // Resource 不一致で 403 になる。テナント一致検証も毎リクエスト行う設計のため無効化する。
+      resultsCacheTtl: Duration.seconds(0),
     });
   }
 }
