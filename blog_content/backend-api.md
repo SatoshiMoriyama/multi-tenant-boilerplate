@@ -40,7 +40,7 @@
 Lambda Authorizer、Usage Plans/API Keys（ティア別クォータ）、パラメータマッピングが必要なため。HTTP APIは `X-Amz-Tenant-Id` の override 不可で分離モードに使えない。
 
 ### 2. オリジン保護: CloudFront経由のみ許可
-CloudFront がシークレットヘッダー `X-Origin-Verify`（Secrets Manager 管理）を付与し、**Lambda Authorizer で検証**する。CDK は `origins.RestApiOrigin` の `customHeaders`（親ディストリビューションのオリジン設定）で付与。
+CloudFront がシークレットヘッダー `X-Origin-Verify`（Secrets Manager 管理）を付与し、**Lambda Authorizer で検証**する。CDK は L1 `CfnDistribution` の `distributionConfig.origins[].originCustomHeaders` で付与。
 - API Gateway リソースポリシーは**使わない**。リソースポリシーの条件キーに任意 HTTP ヘッダーを参照するものが無く（`aws:RequestHeader` は存在しない）、`X-Origin-Verify` を条件評価できないため。
 - WAF での string match 検証（[AWS公式パターン](https://aws.amazon.com/blogs/security/how-to-enhance-amazon-cloudfront-origin-security-with-aws-waf-and-aws-secrets-manager/)）も選択肢だが、常時コストが増えるため採用しない。認可を担う Lambda Authorizer に集約する。
 - シークレットローテーション、より堅牢な SigV4署名（Lambda@Edge）は要件が出た段階で追加。
@@ -61,7 +61,7 @@ JWT検証 + テナント一致検証 + オリジン検証 + テナントID供給
 `hono/aws-lambda` の `handle(app)` を全ルート集約（ルーティングは Hono）。`ANY /{proxy+}` プロキシ統合。CDK は `NodejsFunction`（esbuild）。テナントは `context.authorizer.tenantId` を正として解決。関数分割しない。全ルートが同一実行ロールを共有（細粒度権限が要る段階でトークンベンディング検討）。
 
 ### 7. CloudFront SaaS Manager（マルチテナントディストリビューション）
-- **親**: L2 `Distribution` + L1 `CfnDistribution` で `connectionMode: "tenant-only"` とパラメータ定義。オリジンは API Gateway
+- **親**: L1 `CfnDistribution`（`connectionMode: "tenant-only"`）。オリジンは API Gateway
 - **子**: L1 `CfnDistributionTenant`（`distributionId` / `domains` / `name` / `parameters` / `connectionGroupId` / 証明書・WAFは `customizations` 上書き）
 - **connection group**: L1 `CfnConnectionGroup`（省略時はデフォルト）
 - distribution tenant / connection group は **L1 のみ**。`name` は作成後変更不可
