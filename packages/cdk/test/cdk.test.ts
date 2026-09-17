@@ -4,7 +4,7 @@ import { BackendApiStack } from '../lib/backend-api-stack';
 import type { BackendApiConfig } from '../lib/config';
 
 const config: BackendApiConfig = {
-  baseDomain: 'chelky.click',
+  baseDomain: 'example.com',
   certificateArn:
     'arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000',
   hostedZoneId: 'Z0000000000000000000',
@@ -62,7 +62,9 @@ describe('BackendApiStack', () => {
       (r) => r.Properties.FunctionCode as string,
     );
     // config.baseDomain が焼き込まれ、未置換プレースホルダが残らない。
-    expect(codes.some((c) => c.includes("var baseDomain = 'example.com'"))).toBe(true);
+    expect(
+      codes.some((c) => c.includes("var baseDomain = 'example.com'")),
+    ).toBe(true);
     expect(codes.some((c) => c.includes('__BASE_DOMAIN__'))).toBe(false);
   });
 });
