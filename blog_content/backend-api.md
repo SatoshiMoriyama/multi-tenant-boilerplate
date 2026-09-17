@@ -52,7 +52,7 @@ JWT検証 + テナント一致検証 + オリジン検証 + テナントID供給
 - 期待挙動: 直叩き（`X-Origin-Verify` なし）→ 401 / CloudFront経由・認証なし → Deny(403) / 正しいIDトークン+tenantId一致 → 200
 
 ### 4. ドメイン/証明書: `{tenant}.chelky.click`
-ワイルドカード ACM 証明書 `*.chelky.click`（`us-east-1` 必須）を親に設定。`chelky.click` は Route 53 管理なので DNS検証を CDK 自動化。テナント CNAME はオンボーディング時に作成。
+ワイルドカード ACM 証明書 `*.chelky.click`（`us-east-1` 必須）は既存のものを `certificateArn` で参照し親に設定（CDKは証明書発行・DNS検証を行わない）。Route 53 も `hostedZoneId` で既存ゾーンを参照。テナント CNAME はオンボーディング時に CDK が作成。
 
 ### 5. CloudFront キャッシュ
 認証付きAPIはキャッシュ無効（`Authorization` 転送）。静的アセットのみ path pattern 別に有効化。
