@@ -1,5 +1,5 @@
-import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib/core';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib/core';
 import type { Construct } from 'constructs';
 import type { BackendApiConfig } from './config';
 import { Api } from './constructs/api';
@@ -42,6 +42,7 @@ export class BackendApiStack extends Stack {
 
     const api = new Api(this, 'Api', {
       authorizer: authorizer.authorizer,
+      allowedOrigins: config.allowedOrigins,
     });
 
     const edge = new Edge(this, 'Edge', {
