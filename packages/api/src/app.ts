@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { corsMiddleware } from './middleware/cors.js';
 import { type TenantEnv, tenantContext } from './middleware/tenant.js';
 
 /**
@@ -7,6 +8,9 @@ import { type TenantEnv, tenantContext } from './middleware/tenant.js';
  */
 export const app = new Hono<TenantEnv>();
 
+// CORS はテナントコンテキスト検証より前。プリフライト(OPTIONS)は認証情報を
+// 運ばないため、tenantContext の 403 に巻き込まれずに応答させる。
+app.use('*', corsMiddleware());
 app.use('*', tenantContext());
 
 app.get('/health', (c) => {

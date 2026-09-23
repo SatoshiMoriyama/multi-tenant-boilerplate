@@ -1,16 +1,18 @@
 import * as path from 'node:path';
-import { Duration, RemovalPolicy, Stack } from 'aws-cdk-lib/core';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import { Duration, RemovalPolicy, Stack } from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
 
 const API_SRC = path.join(__dirname, '..', '..', '..', 'api', 'src');
 
 export interface ApiProps {
   readonly authorizer: apigateway.IAuthorizer;
+  /** CORS で許可するオリジンの明示リスト（Hono の cors ミドルウェアへ渡す） */
+  readonly allowedOrigins: readonly string[];
 }
 
 /**
@@ -40,6 +42,12 @@ export class Api extends Construct {
       }),
       // テナント分離モード（関数作成時のみ設定可能）。テナント単位に実行環境を分離する。
       tenancyConfig: lambda.TenancyConfig.PER_TENANT,
+      environment: {
+        // Hono の CORS ミドルウェアが参照する許可オリジンの明示リスト。
+        // 実リクエスト(GET等)のレスポンスに Access-Control-Allow-Origin を付ける。
+        // プリフライト(OPTIONS)は API Gateway の MOCK 統合で返す（下記）。
+        ALLOWED_ORIGINS: props.allowedOrigins.join(','),
+      },
     });
 
     // 明示的な全許可リソースポリシー。
@@ -89,5 +97,30 @@ export class Api extends Construct {
     const proxyResource = this.restApi.root.addResource('{proxy+}');
     proxyResource.addMethod('ANY', integration, methodOptions);
     this.restApi.root.addMethod('ANY', integration, methodOptions);
+
+    // CORS プリフライト(OPTIONS)。MOCK 統合で API Gateway が直接応答する
+    // （Lambda を呼ばない）。本体はテナント分離モードで X-Amz-Tenant-Id 必須
+    // かつ OPTIONS は Authorizer を通せないため、Lambda に流さず MOCK で返す。
+    //
+    // allowOrigins を複数渡すと Access-Control-Allow-Origin が連結値になる、
+    // という誤解があるが、この CDK バージョンはそうしない。生成される MOCK は
+    // 先頭オリジンを静的にセットし、2番目以降は VTL でリクエストの Origin と
+    // 照合して一致時のみ $context.responseOverride で上書きする。結果として
+    // 各許可オリジンには自身のオリジンだけが返る（動的出し分け）。
+    //   #if($origin == "<2番目>" || $origin == "<3番目>")
+    //     #set($context.responseOverride.header.Access-Control-Allow-Origin = $origin)
+    //   #end
+    // 挙動は aws-cdk-lib の Resource.addCorsPreflight 実装に基づき、デプロイ済み
+    // スタックでも各オリジンが正しく返ることを確認済み。
+    if (props.allowedOrigins.length > 0) {
+      const corsPreflight: apigateway.CorsOptions = {
+        allowOrigins: [...props.allowedOrigins],
+        allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+        allowHeaders: ['Authorization', 'Content-Type'],
+        maxAge: Duration.seconds(600),
+      };
+      proxyResource.addCorsPreflight(corsPreflight);
+      this.restApi.root.addCorsPreflight(corsPreflight);
+    }
   }
 }

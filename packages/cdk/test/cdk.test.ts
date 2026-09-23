@@ -9,6 +9,7 @@ const config: BackendApiConfig = {
     'arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000',
   hostedZoneId: 'Z0000000000000000000',
   initialTenants: ['app'],
+  allowedOrigins: ['https://app.example.com', 'http://localhost:5173'],
 };
 
 function synth() {
@@ -36,6 +37,16 @@ describe('BackendApiStack', () => {
     const template = synth();
     template.hasResourceProperties('AWS::ApiGateway::Authorizer', {
       Type: 'REQUEST',
+    });
+  });
+
+  test('CORS プリフライト(OPTIONS)が Authorizer なしで追加される', () => {
+    const template = synth();
+    // OPTIONS は MOCK 統合・authorizationType NONE で返す。
+    template.hasResourceProperties('AWS::ApiGateway::Method', {
+      HttpMethod: 'OPTIONS',
+      AuthorizationType: 'NONE',
+      Integration: { Type: 'MOCK' },
     });
   });
 

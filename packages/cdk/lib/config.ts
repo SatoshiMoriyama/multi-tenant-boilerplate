@@ -14,11 +14,18 @@ export interface BackendApiConfig {
   readonly hostedZoneId: string;
   /** フェーズ1で用意する pooled テナントのサブドメイン一覧（例: ["app"]） */
   readonly initialTenants: readonly string[];
+  /**
+   * CORS で許可するオリジンの明示リスト。SPA を配信するオリジンを列挙する。
+   * 開発時は http://localhost:5173 など、本番は https://{tenant}.{baseDomain}。
+   * 空なら CORS はどのオリジンにも許可を返さない（同一オリジン配信のみ想定）。
+   */
+  readonly allowedOrigins: readonly string[];
 }
 
 const DEFAULTS = {
   baseDomain: 'example.com',
   initialTenants: ['app'],
+  allowedOrigins: [] as readonly string[],
 } as const;
 
 /**
@@ -45,12 +52,16 @@ export function resolveConfig(
   const initialTenants = asStringArray(getContext('initialTenants')) ?? [
     ...DEFAULTS.initialTenants,
   ];
+  const allowedOrigins = asStringArray(getContext('allowedOrigins')) ?? [
+    ...DEFAULTS.allowedOrigins,
+  ];
 
   return {
     baseDomain,
     certificateArn,
     hostedZoneId,
     initialTenants,
+    allowedOrigins,
   };
 }
 
