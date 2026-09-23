@@ -10,9 +10,10 @@ import { cors } from 'hono/cors';
  * credentials は付けない（true にすると許可オリジンにワイルドカードを使えず、
  * 本構成では不要な制約になる）。
  *
- * プリフライト(OPTIONS)は Lambda Authorizer を通さず Lambda に届く必要がある。
- * API Gateway 側で OPTIONS を authorizationType=NONE で Lambda 統合する
- * （packages/cdk/lib/constructs/api.ts）。
+ * ここで扱うのは実リクエスト(GET等)のレスポンスへの CORS ヘッダー付与のみ。
+ * プリフライト(OPTIONS)は Lambda に届かず、API Gateway の MOCK 統合が直接返す
+ * （packages/cdk/lib/constructs/api.ts の addCorsPreflight）。本体 Lambda は
+ * テナント分離モードで X-Amz-Tenant-Id 必須のため OPTIONS を流せないため。
  */
 export const corsMiddleware = (): MiddlewareHandler => {
   const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')

@@ -101,8 +101,17 @@ export class Api extends Construct {
     // CORS プリフライト(OPTIONS)。MOCK 統合で API Gateway が直接応答する
     // （Lambda を呼ばない）。本体はテナント分離モードで X-Amz-Tenant-Id 必須
     // かつ OPTIONS は Authorizer を通せないため、Lambda に流さず MOCK で返す。
-    // allowedOrigins を複数渡すと、CDK は Origin を許可リストと突き合わせて
-    // 一致したオリジンだけ返す VTL を生成する（動的出し分け）。
+    //
+    // allowOrigins を複数渡すと Access-Control-Allow-Origin が連結値になる、
+    // という誤解があるが、この CDK バージョンはそうしない。生成される MOCK は
+    // 先頭オリジンを静的にセットし、2番目以降は VTL でリクエストの Origin と
+    // 照合して一致時のみ $context.responseOverride で上書きする。結果として
+    // 各許可オリジンには自身のオリジンだけが返る（動的出し分け）。
+    //   #if($origin == "<2番目>" || $origin == "<3番目>")
+    //     #set($context.responseOverride.header.Access-Control-Allow-Origin = $origin)
+    //   #end
+    // 挙動は aws-cdk-lib の Resource.addCorsPreflight 実装に基づき、デプロイ済み
+    // スタックでも各オリジンが正しく返ることを確認済み。
     if (props.allowedOrigins.length > 0) {
       const corsPreflight: apigateway.CorsOptions = {
         allowOrigins: [...props.allowedOrigins],
