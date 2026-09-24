@@ -1,9 +1,9 @@
 import * as path from 'node:path';
-import { Duration, RemovalPolicy } from 'aws-cdk-lib/core';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import { Duration, RemovalPolicy } from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
 
 const AUTHORIZER_SRC = path.join(
@@ -18,6 +18,16 @@ const AUTHORIZER_SRC = path.join(
 export interface AuthProps {
   /** custom:tenantId 属性名（既定 custom:tenantId） */
   readonly tenantAttributeName?: string;
+  /**
+   * Hosted UI のデフォルトドメインのプレフィックス。
+   * 指定時のみ User Pool Domain を作り、App Client に OAuth 設定を付ける。
+   */
+  readonly authDomainPrefix?: string;
+  /**
+   * Hosted UI のコールバック / ログアウト URL に使う SPA オリジン一覧。
+   * 例: ["http://localhost:5173", "https://app.example.com"]
+   */
+  readonly callbackOrigins?: readonly string[];
 }
 
 /**
@@ -64,14 +74,41 @@ export class Auth extends Construct {
       },
     });
 
+    // Hosted UI を使う場合、コールバック / ログアウト URL は SPA のオリジン。
+    const callbackOrigins = props.callbackOrigins ?? [];
+    const useHostedUi =
+      Boolean(props.authDomainPrefix) && callbackOrigins.length > 0;
+
     this.userPoolClient = this.userPool.addClient('AppClient', {
       authFlows: {
+        // SRP は残す（CLI 動作確認や自前フォーム用途）。Hosted UI とは併存できる。
         userSrp: true,
       },
+      // Hosted UI（Authorization Code + PKCE）。SPA なので client secret は持たない。
+      oAuth: useHostedUi
+        ? {
+            flows: { authorizationCodeGrant: true },
+            scopes: [
+              cognito.OAuthScope.OPENID,
+              cognito.OAuthScope.EMAIL,
+              cognito.OAuthScope.PROFILE,
+            ],
+            callbackUrls: [...callbackOrigins],
+            logoutUrls: [...callbackOrigins],
+          }
+        : undefined,
       idTokenValidity: Duration.hours(1),
       accessTokenValidity: Duration.hours(1),
       refreshTokenValidity: Duration.days(30),
       preventUserExistenceErrors: true,
     });
+
+    // Hosted UI のデフォルトドメイン。ホスト名は
+    // {prefix}.auth.{region}.amazoncognito.com。
+    if (props.authDomainPrefix) {
+      this.userPool.addDomain('HostedUiDomain', {
+        cognitoDomain: { domainPrefix: props.authDomainPrefix },
+      });
+    }
   }
 }
