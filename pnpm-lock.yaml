@@ -107,9 +107,6 @@ importers:
 
   packages/web:
     dependencies:
-      '@aws-amplify/auth':
-        specifier: ^6.15.0
-        version: 6.21.1(@aws-amplify/core@6.19.1)
       '@tanstack/react-query':
         specifier: ^5.90.2
         version: 5.103.2(react@19.3.0)

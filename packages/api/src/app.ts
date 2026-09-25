@@ -17,14 +17,21 @@ app.get('/health', (c) => {
   return c.json({ status: 'ok' });
 });
 
+// /me が返すリクエストヘッダのうち、値を隠すもの（小文字で比較）。
+// - authorization: JWT が平文で入る
+// - x-origin-verify: CloudFront が付与するオリジン検証シークレット。
+//   露出すると直アクセスでオリジン保護を回避されるため必ずマスクする。
+const MASKED_HEADERS = new Set(['authorization', 'x-origin-verify']);
+
 app.get('/me', (c) => {
   const tenantId = c.get('tenantId');
-  // 検証用にリクエストヘッダも返す。Authorization はトークンが平文で
-  // 入るためマスクする（値の有無だけ分かる形にする）。
+  // 検証用にリクエストヘッダも返す。シークレット系は値をマスクし、
+  // 有無だけ分かる形にする。
   const headers: Record<string, string> = {};
   for (const [key, value] of c.req.raw.headers.entries()) {
-    headers[key] =
-      key.toLowerCase() === 'authorization' ? '***masked***' : value;
+    headers[key] = MASKED_HEADERS.has(key.toLowerCase())
+      ? '***masked***'
+      : value;
   }
   return c.json({ tenantId, headers });
 });

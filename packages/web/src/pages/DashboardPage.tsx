@@ -48,6 +48,8 @@ export function DashboardPage() {
               </p>
             </div>
 
+            {/* ヘッダはそのまま表示するが、シークレット系（authorization /
+                x-origin-verify）は API 側で ***masked*** 済み。 */}
             <div className="rounded-lg border border-gray-200 bg-white p-4">
               <p className="mb-2 text-sm text-gray-500">
                 GET /me レスポンスヘッダ

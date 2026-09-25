@@ -76,6 +76,16 @@ export class Auth extends Construct {
 
     // Hosted UI を使う場合、コールバック / ログアウト URL は SPA のオリジン。
     const callbackOrigins = props.callbackOrigins ?? [];
+
+    // authDomainPrefix を指定したのに callback URL が空だと、ドメインはできるが
+    // OAuth 設定が付かずログインできない中途半端な構成になる。設定ミスを
+    // サイレントに通さず synth 時に落とす。
+    if (props.authDomainPrefix && callbackOrigins.length === 0) {
+      throw new Error(
+        'authDomainPrefix を指定する場合は callbackOrigins（allowedOrigins）を1つ以上指定してください（Hosted UI のコールバックURLに使います）',
+      );
+    }
+
     const useHostedUi =
       Boolean(props.authDomainPrefix) && callbackOrigins.length > 0;
 
@@ -105,9 +115,11 @@ export class Auth extends Construct {
 
     // Hosted UI のデフォルトドメイン。ホスト名は
     // {prefix}.auth.{region}.amazoncognito.com。
-    if (props.authDomainPrefix) {
+    // ドメイン作成と OAuth 設定は同じ条件（useHostedUi）にする。片方だけ作ると
+    // 「ドメインはあるが OAuth 未設定でログインできない」中途半端な構成になるため。
+    if (useHostedUi) {
       this.userPool.addDomain('HostedUiDomain', {
-        cognitoDomain: { domainPrefix: props.authDomainPrefix },
+        cognitoDomain: { domainPrefix: props.authDomainPrefix as string },
       });
     }
   }
