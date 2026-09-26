@@ -9,6 +9,13 @@ import type * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Annotations, Duration, RemovalPolicy, Stack } from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
 
+/** tenant-config.js に焼き込むテナント1件分の公開設定。 */
+export interface EdgeTenantPublicConfig {
+  readonly tenantId: string;
+  readonly userPoolId: string;
+  readonly userPoolClientId: string;
+}
+
 export interface EdgeProps {
   readonly restApi: apigateway.RestApi;
   readonly baseDomain: string;
@@ -16,6 +23,10 @@ export interface EdgeProps {
   readonly certificateArn: string;
   /** CloudFront がオリジンへ付与する検証シークレット */
   readonly originVerifySecret: secretsmanager.ISecret;
+  /** テナントごとの公開設定（/tenant-config.json で返す） */
+  readonly tenantPublicConfigs: readonly EdgeTenantPublicConfig[];
+  /** Cognito Hosted UI ドメイン（全テナント共通）。未設定なら空文字で焼き込む */
+  readonly hostedUiDomain?: string;
 }
 
 /**
@@ -71,6 +82,36 @@ export class Edge extends Construct {
     const spaRouterCode = readFileSync(spaRouterPath, 'utf-8');
     const spaRouter = new cloudfront.Function(this, 'SpaRouter', {
       code: cloudfront.FunctionCode.fromInline(spaRouterCode),
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+    });
+
+    // /tenant-config.json を動的生成して返す CloudFront Function（viewer-request）。
+    // Host からテナントを解決し、そのテナント分の公開設定（clientId 等）だけを
+    // JSON で早期レスポンスする。オリジンには行かない。列挙されないよう Host に
+    // 対応する1件のみ返す（tenant-config.js のコメント参照）。
+    //
+    // tenant→設定のマップは baseDomain と同じくコードへ焼き込む。ただし
+    // userPoolId / userPoolClientId は CloudFormation トークン（cross-stack 参照）の
+    // ため、JSON.stringify（JS 文字列）では解決できない。トークンを保持したまま
+    // JSON を組み立てるため、CDK の文字列トークン連結（tokenizedMapLiteral）で
+    // オブジェクトリテラルを作り、__TENANT_CLIENT_MAP__ を置換する。CDK は
+    // トークンを含む最終文字列を Fn::Join に変換し、デプロイ時に解決する。
+    const tenantConfigPath = path.join(
+      __dirname,
+      '..',
+      'functions',
+      'tenant-config.js',
+    );
+    const tenantConfigTemplate = readFileSync(tenantConfigPath, 'utf-8');
+    const tenantMapLiteral = buildTenantMapLiteral(
+      props.tenantPublicConfigs,
+      props.hostedUiDomain ?? '',
+    );
+    const tenantConfigCode = tenantConfigTemplate
+      .replaceAll('__BASE_DOMAIN__', props.baseDomain)
+      .replaceAll('__TENANT_CLIENT_MAP__', tenantMapLiteral);
+    const tenantConfig = new cloudfront.Function(this, 'TenantConfig', {
+      code: cloudfront.FunctionCode.fromInline(tenantConfigCode),
       runtime: cloudfront.FunctionRuntime.JS_2_0,
     });
 
@@ -157,6 +198,24 @@ export class Edge extends Construct {
           ],
         },
         cacheBehaviors: [
+          // /tenant-config.json は tenant-config Function が viewer-request で
+          // 早期レスポンスする（オリジンには行かない）。targetOriginId は形式上
+          // 必須なので S3 を指すが、Function が return response するため未使用。
+          // Host ごとに内容が変わるためキャッシュ無効。
+          {
+            pathPattern: '/tenant-config.json',
+            targetOriginId: siteOriginId,
+            viewerProtocolPolicy: 'redirect-to-https',
+            cachePolicyId:
+              cloudfront.CachePolicy.CACHING_DISABLED.cachePolicyId,
+            allowedMethods: ['GET', 'HEAD', 'OPTIONS'],
+            functionAssociations: [
+              {
+                eventType: 'viewer-request',
+                functionArn: tenantConfig.functionArn,
+              },
+            ],
+          },
           // /api/* は API Gateway へ。認証付きAPIはキャッシュ無効。
           // Authorization/X-Tenant-Id を転送し、tenant-resolver で X-Tenant-Id を付与。
           {
@@ -255,4 +314,33 @@ export class Edge extends Construct {
       );
     }
   }
+}
+
+/**
+ * tenant-config.js に焼き込む tenant→設定マップの JS オブジェクトリテラル文字列を作る。
+ *
+ * userPoolId / userPoolClientId は CloudFormation トークン（cross-stack 参照）のため
+ * JSON.stringify では解決できない（`${Token[...]}` という文字列になる）。そこで
+ * トークンはテンプレートリテラルで連結し（CDK が Fn::Join 化してデプロイ時に解決）、
+ * トークンでない値（tenantId / hostedUiDomain）だけ JSON.stringify で安全にエスケープする。
+ *
+ * 生成例（トークンは実際には解決される）:
+ *   {"tenant-a":{"userPoolId":"<token>","userPoolClientId":"<token>","hostedUiDomain":"x.auth..."}}
+ */
+function buildTenantMapLiteral(
+  tenants: readonly EdgeTenantPublicConfig[],
+  hostedUiDomain: string,
+): string {
+  const domainLiteral = JSON.stringify(hostedUiDomain);
+  const entries = tenants.map((t) => {
+    const key = JSON.stringify(t.tenantId);
+    // userPoolId / userPoolClientId はトークン。テンプレートリテラルで連結すると
+    // CDK トークンとして扱われ、最終的に Fn::Join に展開される。JSON 文字列値に
+    // するため前後をダブルクオートで囲む。トークンは英数字とアンダースコアのみで
+    // 構成される Cognito のID/ARNの一部であり、JSON のエスケープは不要。
+    const poolId = `"${t.userPoolId}"`;
+    const clientId = `"${t.userPoolClientId}"`;
+    return `${key}:{"userPoolId":${poolId},"userPoolClientId":${clientId},"hostedUiDomain":${domainLiteral}}`;
+  });
+  return `{${entries.join(',')}}`;
 }

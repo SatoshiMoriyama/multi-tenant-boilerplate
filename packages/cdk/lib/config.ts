@@ -75,6 +75,50 @@ export function resolveConfig(
   };
 }
 
+/** テナント1件分の App Client 構成（tenantId とその callback オリジン）。 */
+export interface TenantClientDef {
+  readonly tenantId: string;
+  readonly callbackOrigins: readonly string[];
+}
+
+/**
+ * App-client per tenant 用に、テナントごとの callback オリジンを組み立てる。
+ *
+ * 各テナントの callback には次を入れる:
+ * - そのテナントのサブドメイン https://{tenant}.{baseDomain}
+ * - allowedOrigins のうち非サブドメインなオリジン（localhost など）。
+ *   ローカル開発ではホスト名でテナントを判別できないため、開発用オリジンは
+ *   全テナント共通で許可する。
+ *
+ * allowedOrigins に含まれる各テナントのサブドメインは、そのテナントの client に
+ * だけ割り当てる（他テナントのサブドメインは混ぜない）。これにより
+ * tenant-a の App Client が tenant-b のドメインへリダイレクトできなくなる。
+ */
+export function buildTenantClients(
+  config: Pick<
+    BackendApiConfig,
+    'baseDomain' | 'initialTenants' | 'allowedOrigins'
+  >,
+): TenantClientDef[] {
+  const { baseDomain, initialTenants, allowedOrigins } = config;
+
+  // 全テナントのサブドメイン集合。開発用オリジン抽出のため、これに該当しない
+  // allowedOrigins を「テナント非依存（localhost 等）」とみなす。
+  const tenantSubdomains = new Set(
+    initialTenants.map((t) => `https://${t}.${baseDomain}`),
+  );
+  const sharedDevOrigins = allowedOrigins.filter(
+    (o) => !tenantSubdomains.has(o),
+  );
+
+  return initialTenants.map((tenantId) => {
+    const own = `https://${tenantId}.${baseDomain}`;
+    // 重複除去しつつ、自テナントのサブドメイン + 共有 dev オリジン。
+    const origins = Array.from(new Set([own, ...sharedDevOrigins]));
+    return { tenantId, callbackOrigins: origins };
+  });
+}
+
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
