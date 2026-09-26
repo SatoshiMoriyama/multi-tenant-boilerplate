@@ -34,21 +34,24 @@ pnpm workspace のモノレポです。
 
 - `packages/api/` - バックエンド API 本体（Hono / Lambda-lith）
 - `packages/authorizer/` - Lambda Authorizer と Cognito pre-token-generation trigger
-- `packages/cdk/` - AWS CDK（`BackendApiStack` とコンストラクト群）
+- `packages/cdk/` - AWS CDK（`BackendStack` / `FrontendStack` とコンストラクト群）
 - `blog_content/` - 設計解説のブログ記事
 
-CDK は `packages/cdk/lib/` に、スタック本体とコンストラクト 5 つで構成しています。
+CDK は `packages/cdk/lib/` に、責務ごとに分けた 2 スタックとコンストラクト 5 つで構成しています。バックエンド（認証 / API）とフロントエンド配信（CloudFront + S3）のライフサイクルを分離し、片方だけのデプロイ・再作成をしやすくしています。
 
 ```text
 packages/cdk/lib/
-  backend-api-stack.ts  … BackendApiStack。各コンストラクトを組み立て
+  backend-stack.ts      … BackendStack。Auth / Authorizer / Api / OriginVerifySecret を組み立て
+  frontend-stack.ts     … FrontendStack。Edge / Tenants を組み立て（CloudFront + S3 配信）
   constructs/
     auth.ts             … Cognito User Pool + App Client + pre-token trigger
     api.ts              … API Gateway(REST) + Lambda 統合 + Authorizer 紐付け
     authorizer.ts       … Lambda Authorizer（オリジン検証 + JWT + テナント一致）
-    edge.ts             … CloudFront 親ディストリビューション + CloudFront Function
+    edge.ts             … CloudFront 親ディストリビューション + CloudFront Function + S3(SPA) + BucketDeployment
     tenants.ts          … distribution tenant / connection group（L1）+ Route53
 ```
+
+コンストラクトの構成は変わっていません。`BackendStack` が Auth / Authorizer / Api とオリジン検証シークレット（`OriginVerifySecret`）を持ち、`FrontendStack` が Edge / Tenants を持ちます。`FrontendStack` は CloudFront オリジンとなる `restApi` と `originVerifySecret` を `BackendStack` から受け取るため、`bin/cdk.ts` で `frontend.addDependency(backend)` を宣言し、Backend → Frontend の順にデプロイされるようにしています。
 
 ## 前提
 
@@ -67,11 +70,16 @@ packages/cdk/lib/
 pnpm install
 ```
 
+CDK app には `BackendStack`（認証 / API）と `FrontendStack`（CloudFront + S3 配信）の 2 スタックがあります。`FrontendStack` は `BackendStack` の `restApi` / `originVerifySecret` を参照するため、`bin/cdk.ts` の `frontend.addDependency(backend)` により Backend → Frontend の順でデプロイされます。スタックが 2 つになったので、デプロイ時は `--all` で両方を指定する（または両スタック名を明示する）必要があります。
+
+`FrontendStack` の `Edge` は synth 時に `packages/web/dist` を読み込みます。`web/dist/index.html` が存在するときだけ `BucketDeployment` を作成する（無ければ警告のみで throw はしない）ため、`FrontendStack` をデプロイする前に必ず `web:build` を実行し、フロントの成果物を用意してください。
+
 必須の context を渡してデプロイします。`certificateArn` と `hostedZoneId` は環境固有値で、未指定だと synth / deploy がエラーになります。
 
 ```bash
+pnpm run web:build   # FrontendStack の synth が web/dist を拾えるよう先にビルド
 cd packages/cdk
-npx cdk deploy \
+npx cdk deploy --all \
   -c certificateArn=arn:aws:acm:us-east-1:<account-id>:certificate/<cert-id> \
   -c hostedZoneId=<Route53HostedZoneId> \
   --profile <your-profile>
@@ -85,8 +93,10 @@ context は `cdk.context.json` に置くか、デプロイ時に `-c` で渡し�
 | `hostedZoneId` | ○ | テナント CNAME を作成する Route 53 ホストゾーン ID |
 | `baseDomain` | - | テナントサブドメインのベースドメイン（既定 `example.com`） |
 | `initialTenants` | - | 用意するテナントのサブドメイン一覧（既定 `["app"]`） |
+| `allowedOrigins` | - | CORS / Hosted UI で許可するオリジン一覧（既定 `[]`） |
+| `authDomainPrefix` | - | Cognito Hosted UI のドメインプレフィックス（未指定なら Hosted UI を作らない） |
 
-デプロイが終わると Outputs に `UserPoolId` / `UserPoolClientId` / `RestApiId` / `DistributionId` が出ます。動作確認の手順は `blog_content/blog.md` の「動かしてみる」を参照してください。
+デプロイが終わると Outputs に、`BackendStack` から `UserPoolId` / `UserPoolClientId` / `RestApiId`（`authDomainPrefix` 指定時は `HostedUiDomain` も）が、`FrontendStack` から `DistributionId` / `SiteBucketName` が出ます。動作確認の手順は `blog_content/blog.md` の「動かしてみる」を参照してください。
 
 ルートからは以下でも実行できます。
 
