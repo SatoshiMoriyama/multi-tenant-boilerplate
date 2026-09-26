@@ -63,10 +63,14 @@ jspm_packages/
 
 # dotenv environment variable files
 .env
+.env.development
 .env.development.local
 .env.test.local
+.env.production
 .env.production.local
 .env.local
+# テンプレートは追跡する（実値を含まない）
+!.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

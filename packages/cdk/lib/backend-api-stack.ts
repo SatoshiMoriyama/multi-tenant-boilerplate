@@ -73,5 +73,8 @@ export class BackendApiStack extends Stack {
     }
     new CfnOutput(this, 'RestApiId', { value: api.restApi.restApiId });
     new CfnOutput(this, 'DistributionId', { value: edge.distributionId });
+    new CfnOutput(this, 'SiteBucketName', {
+      value: edge.siteBucket.bucketName,
+    });
   }
 }
