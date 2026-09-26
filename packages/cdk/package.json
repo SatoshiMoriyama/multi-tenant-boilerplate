@@ -12,7 +12,9 @@
     "synth": "cdk synth",
     "diff": "cdk diff",
     "deploy": "cdk deploy",
+    "deploy:all": "cdk deploy --all",
     "destroy": "cdk destroy",
+    "destroy:all": "cdk destroy --all",
     "bootstrap": "cdk bootstrap"
   },
   "devDependencies": {
