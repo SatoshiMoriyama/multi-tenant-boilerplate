@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs';
-import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
