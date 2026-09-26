@@ -1,3 +1,4 @@
+import type * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib/core';
 import type { Construct } from 'constructs';
@@ -5,15 +6,25 @@ import type { BackendApiConfig } from './config';
 import { Api } from './constructs/api';
 import { Auth } from './constructs/auth';
 import { TenantAuthorizer } from './constructs/authorizer';
-import { Edge } from './constructs/edge';
-import { Tenants } from './constructs/tenants';
 
-export interface BackendApiStackProps extends StackProps {
+export interface BackendStackProps extends StackProps {
   readonly config: BackendApiConfig;
 }
 
-export class BackendApiStack extends Stack {
-  constructor(scope: Construct, id: string, props: BackendApiStackProps) {
+/**
+ * バックエンド（認証 / API）スタック。
+ * Cognito(Auth) / Lambda オーソライザー(Authorizer) / API Gateway(Api) と、
+ * CloudFront → API Gateway のオリジン検証シークレット(OriginVerifySecret) を持つ。
+ * フロントエンド配信スタック(FrontendStack)へは restApi と originVerifySecret を
+ * props（同一 app 内の cross-stack 参照）として渡す。
+ */
+export class BackendStack extends Stack {
+  /** フロントエンドスタックが CloudFront オリジンとして参照する REST API */
+  readonly restApi: apigateway.RestApi;
+  /** CloudFront オリジン検証シークレット（Edge のカスタムヘッダーで共有） */
+  readonly originVerifySecret: secretsmanager.ISecret;
+
+  constructor(scope: Construct, id: string, props: BackendStackProps) {
     super(scope, id, props);
 
     const { config } = props;
@@ -48,19 +59,8 @@ export class BackendApiStack extends Stack {
       allowedOrigins: config.allowedOrigins,
     });
 
-    const edge = new Edge(this, 'Edge', {
-      restApi: api.restApi,
-      baseDomain: config.baseDomain,
-      certificateArn: config.certificateArn,
-      originVerifySecret,
-    });
-
-    new Tenants(this, 'Tenants', {
-      distributionId: edge.distributionId,
-      baseDomain: config.baseDomain,
-      initialTenants: config.initialTenants,
-      hostedZoneId: config.hostedZoneId,
-    });
+    this.restApi = api.restApi;
+    this.originVerifySecret = originVerifySecret;
 
     new CfnOutput(this, 'UserPoolId', { value: auth.userPool.userPoolId });
     new CfnOutput(this, 'UserPoolClientId', {
@@ -72,9 +72,5 @@ export class BackendApiStack extends Stack {
       });
     }
     new CfnOutput(this, 'RestApiId', { value: api.restApi.restApiId });
-    new CfnOutput(this, 'DistributionId', { value: edge.distributionId });
-    new CfnOutput(this, 'SiteBucketName', {
-      value: edge.siteBucket.bucketName,
-    });
   }
 }
