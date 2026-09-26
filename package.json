@@ -10,6 +10,8 @@
     "code:fix": "biome check --write packages/",
     "cdk:deploy": "pnpm --filter cdk run deploy",
     "cdk:destroy": "pnpm --filter cdk run destroy",
+    "dev": "pnpm --filter web run dev",
+    "web:build": "pnpm --filter web run build",
     "setup-blog": "node scripts/setup-blog.js"
   },
   "keywords": [],

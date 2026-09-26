@@ -32,7 +32,10 @@ export class BackendApiStack extends Stack {
       },
     );
 
-    const auth = new Auth(this, 'Auth');
+    const auth = new Auth(this, 'Auth', {
+      authDomainPrefix: config.authDomainPrefix,
+      callbackOrigins: config.allowedOrigins,
+    });
 
     const authorizer = new TenantAuthorizer(this, 'Authorizer', {
       userPool: auth.userPool,
@@ -63,6 +66,11 @@ export class BackendApiStack extends Stack {
     new CfnOutput(this, 'UserPoolClientId', {
       value: auth.userPoolClient.userPoolClientId,
     });
+    if (config.authDomainPrefix) {
+      new CfnOutput(this, 'HostedUiDomain', {
+        value: `${config.authDomainPrefix}.auth.${this.region}.amazoncognito.com`,
+      });
+    }
     new CfnOutput(this, 'RestApiId', { value: api.restApi.restApiId });
     new CfnOutput(this, 'DistributionId', { value: edge.distributionId });
   }

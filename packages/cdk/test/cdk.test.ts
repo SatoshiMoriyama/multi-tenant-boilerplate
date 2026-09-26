@@ -10,6 +10,7 @@ const config: BackendApiConfig = {
   hostedZoneId: 'Z0000000000000000000',
   initialTenants: ['app'],
   allowedOrigins: ['https://app.example.com', 'http://localhost:5173'],
+  authDomainPrefix: 'test-multitenant-boilerplate',
 };
 
 function synth() {
@@ -47,6 +48,18 @@ describe('BackendApiStack', () => {
       HttpMethod: 'OPTIONS',
       AuthorizationType: 'NONE',
       Integration: { Type: 'MOCK' },
+    });
+  });
+
+  test('Hosted UI（User Pool Domain と OAuth 設定）が作られる', () => {
+    const template = synth();
+    template.hasResourceProperties('AWS::Cognito::UserPoolDomain', {
+      Domain: 'test-multitenant-boilerplate',
+    });
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      AllowedOAuthFlows: ['code'],
+      AllowedOAuthFlowsUserPoolClient: true,
+      CallbackURLs: ['https://app.example.com', 'http://localhost:5173'],
     });
   });
 

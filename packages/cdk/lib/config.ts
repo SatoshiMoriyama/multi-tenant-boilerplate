@@ -18,8 +18,16 @@ export interface BackendApiConfig {
    * CORS で許可するオリジンの明示リスト。SPA を配信するオリジンを列挙する。
    * 開発時は http://localhost:5173 など、本番は https://{tenant}.{baseDomain}。
    * 空なら CORS はどのオリジンにも許可を返さない（同一オリジン配信のみ想定）。
+   * Hosted UI の callbackUrls / logoutUrls にもこの集合をそのまま使う
+   * （SPA のオリジン = OAuth リダイレクト先のため）。
    */
   readonly allowedOrigins: readonly string[];
+  /**
+   * Cognito Hosted UI のデフォルトドメインのプレフィックス。
+   * 実際のホスト名は {prefix}.auth.{region}.amazoncognito.com。
+   * アカウント × リージョンで一意である必要がある。未指定なら Hosted UI を作らない。
+   */
+  readonly authDomainPrefix?: string;
 }
 
 const DEFAULTS = {
@@ -55,6 +63,7 @@ export function resolveConfig(
   const allowedOrigins = asStringArray(getContext('allowedOrigins')) ?? [
     ...DEFAULTS.allowedOrigins,
   ];
+  const authDomainPrefix = asString(getContext('authDomainPrefix'));
 
   return {
     baseDomain,
@@ -62,6 +71,7 @@ export function resolveConfig(
     hostedZoneId,
     initialTenants,
     allowedOrigins,
+    authDomainPrefix,
   };
 }
 
