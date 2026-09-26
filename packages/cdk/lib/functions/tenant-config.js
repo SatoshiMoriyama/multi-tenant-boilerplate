@@ -64,6 +64,10 @@ function handler(event) {
       // ホスト（テナント）ごとに内容が変わる。誤って別テナントへ配られないよう
       // キャッシュさせない。
       'cache-control': { value: 'no-store' },
+      // 公開設定には機密情報が無いため許容的な CORS オリジンで安全。
+      // ローカル開発では SPA が別オリジンの CloudFront をクロスオリジンで
+      // fetch するため、ブラウザが設定 JSON を読めるようこのヘッダーが必要。
+      'access-control-allow-origin': { value: '*' },
     },
     body: body,
   };

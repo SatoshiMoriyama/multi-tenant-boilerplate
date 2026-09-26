@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { BackendStack } from '../lib/backend-stack';
-import type { BackendApiConfig } from '../lib/config';
+import { type BackendApiConfig, buildTenantClients } from '../lib/config';
 import { FrontendStack } from '../lib/frontend-stack';
 
 const config: BackendApiConfig = {
@@ -388,5 +388,125 @@ describe('spa-router.js', () => {
     // /api/* は多層防御として素通し。
     expect(run('/api/me')).toBe('/api/me');
     expect(run('/api/tenants/123')).toBe('/api/tenants/123');
+  });
+});
+
+describe('buildTenantClients（テナント分離）', () => {
+  test('未登録の baseDomain サブドメインはどのテナントの callback にも含まれない', () => {
+    // allowedOrigins に未登録テナント（tenant-c）を混ぜても、共有 dev オリジン扱い
+    // されず、tenant-a / tenant-b いずれの client にも割り当てられないことを検証する。
+    const defs = buildTenantClients({
+      baseDomain: 'example.com',
+      initialTenants: ['tenant-a', 'tenant-b'],
+      allowedOrigins: [
+        'https://tenant-a.example.com',
+        'https://tenant-b.example.com',
+        // 未登録テナント。拒否されるべき。
+        'https://tenant-c.example.com',
+        'http://localhost:5173',
+      ],
+    });
+
+    const byId = new Map(defs.map((d) => [d.tenantId, d.callbackOrigins]));
+    const tenantA = byId.get('tenant-a') ?? [];
+    const tenantB = byId.get('tenant-b') ?? [];
+
+    // 未登録テナントの URL はどちらにも現れない。
+    expect(tenantA).not.toContain('https://tenant-c.example.com');
+    expect(tenantB).not.toContain('https://tenant-c.example.com');
+
+    // 自テナントのサブドメイン + 共有 dev（localhost）は残る。
+    expect(tenantA).toEqual([
+      'https://tenant-a.example.com',
+      'http://localhost:5173',
+    ]);
+    expect(tenantB).toEqual([
+      'https://tenant-b.example.com',
+      'http://localhost:5173',
+    ]);
+  });
+
+  test('別テナントのサブドメインは自テナントの callback に混ざらない', () => {
+    // allowedOrigins に両テナントのサブドメインを入れても、各 client には自分の
+    // サブドメインだけが割り当てられる（他テナントのドメインへリダイレクトできない）。
+    const defs = buildTenantClients({
+      baseDomain: 'example.com',
+      initialTenants: ['tenant-a', 'tenant-b'],
+      allowedOrigins: [
+        'https://tenant-a.example.com',
+        'https://tenant-b.example.com',
+        'http://localhost:5173',
+      ],
+    });
+
+    const byId = new Map(defs.map((d) => [d.tenantId, d.callbackOrigins]));
+    expect(byId.get('tenant-a')).not.toContain('https://tenant-b.example.com');
+    expect(byId.get('tenant-b')).not.toContain('https://tenant-a.example.com');
+  });
+
+  test('baseDomain 配下でないオリジン（localhost）は全テナントで共有される', () => {
+    const defs = buildTenantClients({
+      baseDomain: 'example.com',
+      initialTenants: ['tenant-a', 'tenant-b'],
+      allowedOrigins: ['http://localhost:5173'],
+    });
+
+    for (const def of defs) {
+      // 自サブドメイン + 共有 dev（localhost）。
+      expect(def.callbackOrigins).toContain(
+        `https://${def.tenantId}.example.com`,
+      );
+      expect(def.callbackOrigins).toContain('http://localhost:5173');
+    }
+  });
+});
+
+describe('tenant-config.js', () => {
+  test('一致するホストは 200 で CORS ヘッダー(*)を返す（ユニット）', () => {
+    // 注意: このテストは tenant-config.js を読み込み、__BASE_DOMAIN__ と
+    // __TENANT_CLIENT_MAP__ のプレースホルダを具体値へ置換してから handler を
+    // 評価する。CloudFront Function は素の JS（var / function handler）なので
+    // Node で評価できる（spa-router.js のユニットテストと同じ方式）。
+    const fnPath = path.join(
+      __dirname,
+      '..',
+      'lib',
+      'functions',
+      'tenant-config.js',
+    );
+    let src = readFileSync(fnPath, 'utf-8');
+    // edge.ts が synth 時に行うプレースホルダ置換を、テスト用の具体値で再現する。
+    src = src.replace('__BASE_DOMAIN__', 'example.com');
+    src = src.replace(
+      '__TENANT_CLIENT_MAP__',
+      JSON.stringify({
+        'tenant-a': {
+          userPoolId: 'ap-northeast-1_AAA',
+          userPoolClientId: 'client-a',
+          hostedUiDomain: 'auth-a.example.com',
+        },
+      }),
+    );
+    // biome-ignore lint/security/noGlobalEval: CloudFront Function を評価してユニットテストするための限定的な利用。
+    const handler = new Function(`${src}; return handler;`)() as (e: {
+      request: { headers: { host: { value: string } }; uri: string };
+    }) => {
+      statusCode: number;
+      headers: Record<string, { value: string }>;
+      body: string;
+    };
+
+    const res = handler({
+      request: {
+        headers: { host: { value: 'tenant-a.example.com' } },
+        uri: '/tenant-config.json',
+      },
+    });
+
+    // 200 レスポンスに Access-Control-Allow-Origin: '*' が含まれる。
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['access-control-allow-origin'].value).toBe('*');
+    // 該当テナント1件分の公開設定が返る。
+    expect(JSON.parse(res.body).userPoolClientId).toBe('client-a');
   });
 });
