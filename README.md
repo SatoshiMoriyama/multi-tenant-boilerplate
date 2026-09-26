@@ -87,17 +87,19 @@ npx cdk deploy --all \
 
 ### 既存デプロイからの移行に関する警告
 
-このスタック分割は、旧来の単一スタック `BackendApiStack` から `BackendStack` / `FrontendStack` へと、リソースを所有する CloudFormation スタック名を変更します。CloudFormation はリソースをスタック名ごとに管理するため、**すでに `BackendApiStack` をデプロイ済みの環境に対してこの構成をそのままデプロイすると、旧スタックのリソースが削除され、新しい 2 スタックで作り直されます**。とくに次のリソースが再作成される点に注意してください。
+このスタック分割は、旧来の単一スタック `BackendApiStack` から `BackendStack` / `FrontendStack` へと、リソースを所有する CloudFormation スタック名を変更します。CloudFormation はリソースをスタック名ごとに管理するため、**すでに `BackendApiStack` をデプロイ済みの環境に対してこの構成を `cdk deploy --all` でデプロイしても、旧 `BackendApiStack` は自動削除されません**。`cdk deploy --all` は現在の CDK app に定義されたスタック（`BackendStack` / `FrontendStack`）だけを作成・更新するため、**新しい 2 スタックが作成され、旧 `BackendApiStack` とそのリソースはそのまま残って並存します**。旧スタックのリソースはデプロイでは一切変更・削除されません。とくに次のリソースが重複して作成される点に注意してください（Cognito User Pool や CloudFront ドメイン紐付けなどは重複・競合の原因になります）。
 
-- **Cognito User Pool**（登録済みユーザーごと消える）
+- **Cognito User Pool**（新旧が並存し、登録済みユーザーは旧 Pool に残る）
 - **CloudFront ディストリビューション**（および distribution tenant / ドメイン紐付け）
 - **S3 サイトバケット** と **API Gateway REST API**
 
+旧 `BackendApiStack` を片付けるには、新スタックへの移行とデータ検証が完了したうえで、`cdk destroy BackendApiStack`（または CloudFormation コンソールでの削除）を明示的に実行してください。移行前に旧スタックを削除すると、登録済みユーザーなどが失われます。
+
 新規環境（グリーンフィールド）ではそのままデプロイして問題ありません。既存環境を移行する場合は、以下のいずれかの方針を検討してください（本ボイラープレートは自動移行を提供しません）。
 
-- 新環境として扱い、ユーザーやテナントを新スタックへ作り直す（ダウンタイムやユーザー再登録を許容できる場合）。
+- 新環境として扱い、ユーザーやテナントを新スタックへ作り直す（ダウンタイムやユーザー再登録を許容できる場合）。移行完了後に旧 `BackendApiStack` を `cdk destroy BackendApiStack` で削除する。
 - CDK のスタックリファクタリング（`cdk refactor`）やリソースインポート（`cdk import`）を用いて、既存の User Pool / ディストリビューションを削除せずに新スタックへ引き継ぐ。
-- 移行前に必ずステージング環境で `cdk diff` を確認し、削除・再作成対象のリソースを把握する。
+- 移行前に必ずステージング環境で `cdk diff` を確認し、新規に作成されるリソースと、旧 `BackendApiStack` に残って重複するリソースを把握する。
 
 context は `cdk.context.json` に置くか、デプロイ時に `-c` で渡します。
 
