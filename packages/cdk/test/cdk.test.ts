@@ -187,6 +187,24 @@ describe('FrontendStack', () => {
     expect(codes.some((c) => c.includes('__BASE_DOMAIN__'))).toBe(false);
   });
 
+  test('FrontendStack が BackendStack への依存を宣言する（デプロイ順序 Backend → Frontend）', () => {
+    // bin/cdk.ts と同じく addDependency を宣言し、Frontend が Backend に依存することを検証する。
+    // デプロイ順序（Backend → Frontend）はスタック分割設計の要であり、cross-stack 参照が
+    // 解決可能であるための前提になっている。
+    const app = new cdk.App();
+    const backend = new BackendStack(app, 'DepBackend', { config, env });
+    const frontend = new FrontendStack(app, 'DepFrontend', {
+      config,
+      restApi: backend.restApi,
+      originVerifySecret: backend.originVerifySecret,
+      env,
+    });
+    frontend.addDependency(backend);
+
+    expect(frontend.dependencies).toContain(backend);
+    expect(backend.dependencies).not.toContain(frontend);
+  });
+
   test('FrontendStack が BackendStack をスタック間参照する', () => {
     const { backendTemplate, frontendTemplate } = synth();
 

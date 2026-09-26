@@ -13,6 +13,11 @@ const config = resolveConfig((key) => app.node.tryGetContext(key));
 // リージョン跨ぎのスタック分割は対象外。certificateArn は ARN で渡され、
 // CloudFront（グローバル / 証明書は us-east-1）が消費するため、スタックの
 // デプロイリージョンに依存しない。
+// 重要な不変条件: FrontendStack の Edge は API オリジンドメインを自スタックの
+// region / urlSuffix から組み立てる（edge.ts 参照）。両スタックが同じ region を
+// 共有していることが前提であり、ここで env を共有することがその担保になっている。
+// フロントとバックエンドを別リージョンへ置く場合は edge.ts の apiOriginDomain の
+// 解決方法を見直す必要がある。
 const env = {
   account: process.env.CDK_DEFAULT_ACCOUNT,
   region: process.env.CDK_DEFAULT_REGION,
