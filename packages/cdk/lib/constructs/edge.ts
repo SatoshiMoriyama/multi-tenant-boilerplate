@@ -59,8 +59,9 @@ export class Edge extends Construct {
     });
 
     // SPA のディープリンクを /index.html に書き換える CloudFront Function（viewer-request）。
-    // default behavior(SPA/S3)にのみ関連付け、拡張子の無い URI を SPA エントリへ振る。
-    // /api/* には付与しないため、API の 403/404 は本来の JSON エラーのまま返る。
+    // default behavior(SPA/S3)にのみ関連付け、既知の静的拡張子で終わらない URI を
+    // SPA エントリへ振る（ドットを含むルート /reports/2024.q1 等も取りこぼさない）。
+    // 関数側でも /api/* を明示的に素通しするため、API の 403/404 は本来の JSON エラーのまま返る。
     const spaRouterPath = path.join(
       __dirname,
       '..',
@@ -236,8 +237,13 @@ export class Edge extends Construct {
         prune: false,
       });
     } else {
+      // dist が無くても synth/テストは通す（意図的にスキップ）。ただしこのまま
+      // cdk deploy すると SPA バケットが空のまま公開されるため、強めに警告する。
+      // 通常はルートの cdk:deploy が web:build を先に走らせるので発生しない。
       Annotations.of(this).addWarning(
-        'web の dist が見つからないため SPA アセットのデプロイをスキップします。cdk deploy 前に pnpm --filter web build を実行してください。',
+        'web の dist が見つかりません。SPA アセットのデプロイをスキップします。' +
+          'このまま cdk deploy すると空のサイトが配信されます。' +
+          'cdk deploy 前に pnpm --filter web build（またはルートの pnpm cdk:deploy）を実行してください。',
       );
     }
   }
