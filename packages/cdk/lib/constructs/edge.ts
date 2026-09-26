@@ -95,6 +95,14 @@ export class Edge extends Construct {
     });
 
     // REST API のオリジンドメインとパス。
+    // 不変条件: ここで使う region / urlSuffix は Stack.of(this)（= FrontendStack）の値
+    // であり、API 本体が属する BackendStack のものではない。restApiId はスタック間参照で
+    // 正しく import されるが、region / urlSuffix はローカルに解決されるため、この
+    // オリジンドメインが正しいのは FrontendStack と BackendStack が同一リージョンを
+    // 共有している場合に限られる（bin/cdk.ts が両スタックへ同じ env を渡すことで担保）。
+    // 将来フロントとバックエンドを別リージョンへ分割する場合は、synth 時に失敗せず
+    // 誤ったリージョンの execute-api エンドポイントを指すことになるため、API 側の
+    // region / urlSuffix を props で明示的に受け取る形へ変更すること。
     const apiOriginDomain = `${props.restApi.restApiId}.execute-api.${stack.region}.${stack.urlSuffix}`;
     const apiOriginPath = `/${props.restApi.deploymentStage.stageName}`;
 

@@ -1,5 +1,5 @@
 /**
- * BackendApiStack の設定。既存リソースの参照や環境依存値は
+ * BackendStack / FrontendStack 共通の設定。既存リソースの参照や環境依存値は
  * cdk.json の context か、デプロイ時の -c で渡す。
  */
 export interface BackendApiConfig {
