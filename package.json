@@ -8,7 +8,7 @@
     "lint:fix": "markdownlint-cli2 --fix blog_content/**/*.md && textlint --fix blog_content/**/*.md",
     "code:lint": "biome check packages/",
     "code:fix": "biome check --write packages/",
-    "cdk:deploy": "pnpm --filter cdk run deploy",
+    "cdk:deploy": "pnpm run web:build && pnpm --filter cdk run deploy",
     "cdk:destroy": "pnpm --filter cdk run destroy",
     "dev": "pnpm --filter web run dev",
     "web:build": "pnpm --filter web run build",

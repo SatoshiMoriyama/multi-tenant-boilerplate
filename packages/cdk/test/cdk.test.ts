@@ -32,6 +32,45 @@ describe('BackendApiStack', () => {
     template.resourceCountIs('AWS::CloudFront::DistributionTenant', 1);
     template.resourceCountIs('AWS::CloudFront::ConnectionGroup', 1);
     template.resourceCountIs('AWS::SecretsManager::Secret', 1);
+    // SPA 配信用 S3 バケットと OAC。バケットは web アセット用と
+    // BucketDeployment のデプロイ作業用の2つ（後者は CDK 内部が作る）。
+    template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
+    // web dist を配置する BucketDeployment（アセット用 + index.html 用の2つ）。
+    template.resourceCountIs('Custom::CDKBucketDeployment', 2);
+  });
+
+  test('SPA(S3) がデフォルト、/api/* が API Gateway に振り分けられる', () => {
+    const template = synth();
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: {
+        DefaultRootObject: 'index.html',
+        CacheBehaviors: [
+          {
+            PathPattern: '/api/*',
+          },
+        ],
+      },
+    });
+  });
+
+  test('SPA フォールバック(403/404 -> index.html)が設定される', () => {
+    const template = synth();
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: {
+        CustomErrorResponses: [
+          {
+            ErrorCode: 403,
+            ResponseCode: 200,
+            ResponsePagePath: '/index.html',
+          },
+          {
+            ErrorCode: 404,
+            ResponseCode: 200,
+            ResponsePagePath: '/index.html',
+          },
+        ],
+      },
+    });
   });
 
   test('REST API が REQUEST 型 Authorizer を持つ', () => {

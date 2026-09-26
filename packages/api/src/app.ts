@@ -5,8 +5,11 @@ import { type TenantEnv, tenantContext } from './middleware/tenant.js';
 /**
  * Lambda-lith の Hono アプリ。全ルートをこのアプリに集約する。
  * テナントは Lambda Authorizer が返した context.tenantId（JWT由来）を正とする。
+ *
+ * SPA と同一オリジン（例 app.example.com）に同居させるため、API は /api 配下に
+ * まとめる。CloudFront は /api/* をこの API Gateway、それ以外を SPA(S3) へ振り分ける。
  */
-export const app = new Hono<TenantEnv>();
+export const app = new Hono<TenantEnv>().basePath('/api');
 
 // CORS はテナントコンテキスト検証より前。プリフライト(OPTIONS)は認証情報を
 // 運ばないため、tenantContext の 403 に巻き込まれずに応答させる。

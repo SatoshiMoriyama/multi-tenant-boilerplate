@@ -6,7 +6,13 @@ import { Amplify } from 'aws-amplify';
  * 値は環境変数から。
  */
 export function configureAmplify(): void {
-  const redirectUrl = import.meta.env.VITE_REDIRECT_URL;
+  // OAuth のリダイレクト先は「今アプリを開いているオリジン」を実行時に決める。
+  // Amplify v6 は redirectSignIn の中から window.location.origin に一致するものを
+  // 選び、無いと "redirect is coming from a different origin" で失敗する。ビルド時に
+  // 固定値を焼き込むと本番/ローカルでオリジンがズレて壊れるため、env には頼らない。
+  // Cognito App Client の callbackUrls/logoutUrls にこのオリジンが登録されていること。
+  // 末尾スラッシュは付けない（Cognito 登録値と完全一致させる。ズレると redirect_mismatch）。
+  const redirectUrl = window.location.origin;
 
   Amplify.configure({
     Auth: {
