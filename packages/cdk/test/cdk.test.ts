@@ -1,5 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
-import { Template } from 'aws-cdk-lib/assertions';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { BackendApiStack } from '../lib/backend-api-stack';
 import type { BackendApiConfig } from '../lib/config';
 
@@ -35,8 +35,11 @@ describe('BackendApiStack', () => {
     // SPA 配信用 S3 バケットと OAC。バケットは web アセット用と
     // BucketDeployment のデプロイ作業用の2つ（後者は CDK 内部が作る）。
     template.resourceCountIs('AWS::CloudFront::OriginAccessControl', 1);
-    // web dist を配置する BucketDeployment（アセット用 + index.html 用の2つ）。
-    template.resourceCountIs('Custom::CDKBucketDeployment', 2);
+    // テストは web/dist 無しで synth するため BucketDeployment は作られない（0 件）。
+    // dist が存在する場合のみアセット用 + index.html 用の2つが作られる。
+    template.resourceCountIs('Custom::CDKBucketDeployment', 0);
+    // CloudFront Function は tenant-resolver と spa-router の2つ。
+    template.resourceCountIs('AWS::CloudFront::Function', 2);
   });
 
   test('SPA(S3) がデフォルト、/api/* が API Gateway に振り分けられる', () => {
@@ -53,22 +56,22 @@ describe('BackendApiStack', () => {
     });
   });
 
-  test('SPA フォールバック(403/404 -> index.html)が設定される', () => {
+  test('SPA フォールバックが default behavior の viewer-request Function で行われ、CustomErrorResponses は使われない', () => {
     const template = synth();
+    // default behavior に viewer-request の FunctionAssociation（spa-router）が付く。
     template.hasResourceProperties('AWS::CloudFront::Distribution', {
       DistributionConfig: {
-        CustomErrorResponses: [
-          {
-            ErrorCode: 403,
-            ResponseCode: 200,
-            ResponsePagePath: '/index.html',
-          },
-          {
-            ErrorCode: 404,
-            ResponseCode: 200,
-            ResponsePagePath: '/index.html',
-          },
-        ],
+        DefaultCacheBehavior: {
+          FunctionAssociations: Match.arrayWith([
+            Match.objectLike({ EventType: 'viewer-request' }),
+          ]),
+        },
+      },
+    });
+    // ディストリビューション全体に効く CustomErrorResponses は定義しない。
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: {
+        CustomErrorResponses: Match.absent(),
       },
     });
   });

@@ -6,7 +6,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import type * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
-import { Duration, RemovalPolicy, Stack } from 'aws-cdk-lib/core';
+import { Annotations, Duration, RemovalPolicy, Stack } from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
 
 export interface EdgeProps {
@@ -23,7 +23,7 @@ export interface EdgeProps {
  * 親は connectionMode=tenant-only。子(distribution tenant)は tenants.ts で作成する。
  *
  * 1テナント1オリジン（例 app.example.com）に SPA と API を同居させる。
- * - default behavior: SPA(S3) を配信
+ * - default behavior: SPA(S3) を配信。spa-router Function でディープリンクを index.html に書き換える
  * - /api/* behavior: API Gateway へ。tenant-resolver Function と X-Origin-Verify を付与
  */
 export class Edge extends Construct {
@@ -55,6 +55,21 @@ export class Edge extends Construct {
     );
     this.tenantResolver = new cloudfront.Function(this, 'TenantResolver', {
       code: cloudfront.FunctionCode.fromInline(resolverCode),
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+    });
+
+    // SPA のディープリンクを /index.html に書き換える CloudFront Function（viewer-request）。
+    // default behavior(SPA/S3)にのみ関連付け、拡張子の無い URI を SPA エントリへ振る。
+    // /api/* には付与しないため、API の 403/404 は本来の JSON エラーのまま返る。
+    const spaRouterPath = path.join(
+      __dirname,
+      '..',
+      'functions',
+      'spa-router.js',
+    );
+    const spaRouterCode = readFileSync(spaRouterPath, 'utf-8');
+    const spaRouter = new cloudfront.Function(this, 'SpaRouter', {
+      code: cloudfront.FunctionCode.fromInline(spaRouterCode),
       runtime: cloudfront.FunctionRuntime.JS_2_0,
     });
 
@@ -119,11 +134,18 @@ export class Edge extends Construct {
           },
         ],
         // 既定は SPA(S3)。静的アセットはキャッシュ最適化。
+        // spa-router を viewer-request で関連付け、ディープリンクを /index.html に書き換える。
         defaultCacheBehavior: {
           targetOriginId: siteOriginId,
           viewerProtocolPolicy: 'redirect-to-https',
           cachePolicyId: cloudfront.CachePolicy.CACHING_OPTIMIZED.cachePolicyId,
           allowedMethods: ['GET', 'HEAD', 'OPTIONS'],
+          functionAssociations: [
+            {
+              eventType: 'viewer-request',
+              functionArn: spaRouter.functionArn,
+            },
+          ],
         },
         cacheBehaviors: [
           // /api/* は API Gateway へ。認証付きAPIはキャッシュ無効。
@@ -154,20 +176,9 @@ export class Edge extends Construct {
             ],
           },
         ],
-        // SPA フォールバック。S3 が 403/404 を返すディープリンクは index.html を
-        // 200 で返し、クライアントルーティングに委ねる。
-        customErrorResponses: [
-          {
-            errorCode: 403,
-            responseCode: 200,
-            responsePagePath: '/index.html',
-          },
-          {
-            errorCode: 404,
-            responseCode: 200,
-            responsePagePath: '/index.html',
-          },
-        ],
+        // SPA フォールバックは default behavior の spa-router(viewer-request)で行う。
+        // ディストリビューション全体に効く customErrorResponses は使わない。
+        // これにより /api/* の 403/404 は index.html に差し替わらず、本来の JSON エラーを返す。
         viewerCertificate: {
           acmCertificateArn: props.certificateArn,
           sslSupportMethod: 'sni-only',
@@ -199,34 +210,35 @@ export class Edge extends Construct {
     // 無効化は行わない（A 方針）。ハッシュ付きアセット + no-cache な index.html の
     // 組み合わせで、次回アクセス時に新しい index.html が新ハッシュのアセットを取りに行く。
     const distDir = path.join(__dirname, '..', '..', '..', 'web', 'dist');
-    if (!existsSync(path.join(distDir, 'index.html'))) {
-      throw new Error(
-        `web の dist が見つからない（${distDir}）。cdk deploy 前に web をビルドすること` +
-          `（例: pnpm --filter web build、またはルートの pnpm cdk:deploy）。`,
+    // 合成（synth）とアセット配置を分離する。dist が無い状態でも synth/テストが通るよう、
+    // 成果物が存在するときだけ BucketDeployment を作成し、無ければ警告注釈を出すだけにする。
+    if (existsSync(path.join(distDir, 'index.html'))) {
+      // アセット（index.html 以外）: 長期キャッシュ・immutable。
+      // ハッシュ付きファイル名なので内容が変わればファイル名も変わる。
+      new s3deploy.BucketDeployment(this, 'SiteAssetsDeployment', {
+        sources: [s3deploy.Source.asset(distDir, { exclude: ['index.html'] })],
+        destinationBucket: this.siteBucket,
+        cacheControl: [
+          s3deploy.CacheControl.maxAge(Duration.days(365)),
+          s3deploy.CacheControl.immutable(),
+        ],
+        // 同一バケットへ複数デプロイするため prune は無効（互いのファイルを消さない）。
+        prune: false,
+      });
+
+      // index.html: no-cache。SPA のエントリなので毎回再検証させ、更新を即反映する。
+      new s3deploy.BucketDeployment(this, 'SiteHtmlDeployment', {
+        sources: [
+          s3deploy.Source.asset(distDir, { exclude: ['*', '!index.html'] }),
+        ],
+        destinationBucket: this.siteBucket,
+        cacheControl: [s3deploy.CacheControl.noCache()],
+        prune: false,
+      });
+    } else {
+      Annotations.of(this).addWarning(
+        'web の dist が見つからないため SPA アセットのデプロイをスキップします。cdk deploy 前に pnpm --filter web build を実行してください。',
       );
     }
-
-    // アセット（index.html 以外）: 長期キャッシュ・immutable。
-    // ハッシュ付きファイル名なので内容が変わればファイル名も変わる。
-    new s3deploy.BucketDeployment(this, 'SiteAssetsDeployment', {
-      sources: [s3deploy.Source.asset(distDir, { exclude: ['index.html'] })],
-      destinationBucket: this.siteBucket,
-      cacheControl: [
-        s3deploy.CacheControl.maxAge(Duration.days(365)),
-        s3deploy.CacheControl.immutable(),
-      ],
-      // 同一バケットへ複数デプロイするため prune は無効（互いのファイルを消さない）。
-      prune: false,
-    });
-
-    // index.html: no-cache。SPA のエントリなので毎回再検証させ、更新を即反映する。
-    new s3deploy.BucketDeployment(this, 'SiteHtmlDeployment', {
-      sources: [
-        s3deploy.Source.asset(distDir, { exclude: ['*', '!index.html'] }),
-      ],
-      destinationBucket: this.siteBucket,
-      cacheControl: [s3deploy.CacheControl.noCache()],
-      prune: false,
-    });
   }
 }
