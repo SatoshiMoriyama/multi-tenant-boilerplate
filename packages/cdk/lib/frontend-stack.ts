@@ -2,6 +2,7 @@ import type * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import type * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { CfnOutput, Stack, type StackProps } from 'aws-cdk-lib/core';
 import type { Construct } from 'constructs';
+import type { TenantPublicConfig } from './backend-stack';
 import type { BackendApiConfig } from './config';
 import { Edge } from './constructs/edge';
 import { Tenants } from './constructs/tenants';
@@ -12,6 +13,8 @@ export interface FrontendStackProps extends StackProps {
   readonly restApi: apigateway.RestApi;
   /** バックエンドスタックが作成したオリジン検証シークレット */
   readonly originVerifySecret: secretsmanager.ISecret;
+  /** テナントごとの公開設定（tenant-config.js に焼き込む） */
+  readonly tenantPublicConfigs: readonly TenantPublicConfig[];
 }
 
 /**
@@ -28,11 +31,19 @@ export class FrontendStack extends Stack {
 
     const { config } = props;
 
+    // Hosted UI ドメインは authDomainPrefix（config の静的値）と自スタックの
+    // region から組み立てる。BackendStack と同一リージョン前提（bin/cdk.ts で担保）。
+    const hostedUiDomain = config.authDomainPrefix
+      ? `${config.authDomainPrefix}.auth.${this.region}.amazoncognito.com`
+      : undefined;
+
     const edge = new Edge(this, 'Edge', {
       restApi: props.restApi,
       baseDomain: config.baseDomain,
       certificateArn: config.certificateArn,
       originVerifySecret: props.originVerifySecret,
+      tenantPublicConfigs: props.tenantPublicConfigs,
+      hostedUiDomain,
     });
 
     new Tenants(this, 'Tenants', {

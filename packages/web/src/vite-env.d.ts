@@ -6,12 +6,9 @@ interface ImportMetaEnv {
    * ローカル開発では別オリジンの API を指す。例: https://app.example.com
    */
   readonly VITE_API_BASE_URL?: string;
-  /** Cognito User Pool ID。例: ap-northeast-1_xxxxxxxxx */
-  readonly VITE_COGNITO_USER_POOL_ID: string;
-  /** Cognito App Client ID */
-  readonly VITE_COGNITO_USER_POOL_CLIENT_ID: string;
-  /** Cognito Hosted UI ドメイン。例: xxx.auth.ap-northeast-1.amazoncognito.com */
-  readonly VITE_COGNITO_HOSTED_UI_DOMAIN: string;
+  // Cognito の設定（User Pool ID / App Client ID / Hosted UI ドメイン）は
+  // ビルド時の env ではなく、起動時に /tenant-config.json から実行時取得する
+  // （App-client per tenant のため、テナントごとに clientId が異なる）。
 }
 
 interface ImportMeta {

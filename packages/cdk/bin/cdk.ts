@@ -32,6 +32,7 @@ const frontend = new FrontendStack(app, 'FrontendStack', {
   config,
   restApi: backend.restApi,
   originVerifySecret: backend.originVerifySecret,
+  tenantPublicConfigs: backend.tenantPublicConfigs,
   env,
 });
 

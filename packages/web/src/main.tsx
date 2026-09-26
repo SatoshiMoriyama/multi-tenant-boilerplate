@@ -7,8 +7,6 @@ import './index.css';
 import { configureAmplify } from './lib/amplify';
 import { router } from './router';
 
-configureAmplify();
-
 const queryClient = new QueryClient();
 
 /**
@@ -17,6 +15,10 @@ const queryClient = new QueryClient();
  * 未認証と判定してログインへ戻し、ループしうるため。
  */
 async function bootstrap(): Promise<void> {
+  // Amplify 設定はテナント設定(/tenant-config.json)の取得を伴う非同期処理。
+  // fetchAuthSession より前に完了している必要がある。
+  await configureAmplify();
+
   const hasAuthCode = new URLSearchParams(window.location.search).has('code');
   if (hasAuthCode) {
     try {

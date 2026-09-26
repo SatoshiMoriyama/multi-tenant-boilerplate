@@ -19,7 +19,12 @@ const AUTHORIZER_SRC = path.join(
 
 export interface AuthorizerProps {
   readonly userPool: cognito.IUserPool;
-  readonly userPoolClient: cognito.IUserPoolClient;
+  /**
+   * tenantId -> App Client。App-client per tenant 方式では各テナントが
+   * 別々の App Client を持つ。Authorizer は全 clientId を許可しつつ、
+   * トークンの aud がアクセス先テナントの App Client と一致するか突合する。
+   */
+  readonly userPoolClients: ReadonlyMap<string, cognito.IUserPoolClient>;
   /** CloudFront から付与されるオリジン検証シークレット。Authorizer 内で照合 */
   readonly originVerifySecret: secretsmanager.ISecret;
   /** custom:tenantId 属性名（既定 custom:tenantId） */
@@ -30,6 +35,7 @@ export interface AuthorizerProps {
  * REQUEST 型 Lambda Authorizer。
  * - JWT 検証
  * - Host由来テナントIDとJWT由来テナントIDの一致検証
+ * - テナント↔clientId（aud）の突合（App-client per tenant の多層防御）
  * - X-Origin-Verify（CloudFront が付与）とシークレットの一致検証（オリジン保護）
  * 認可コンテキストに JWT 由来の tenantId を返す。
  */
@@ -38,6 +44,16 @@ export class TenantAuthorizer extends Construct {
 
   constructor(scope: Construct, id: string, props: AuthorizerProps) {
     super(scope, id);
+
+    if (props.userPoolClients.size === 0) {
+      throw new Error('userPoolClients を1つ以上指定してください');
+    }
+
+    // tenantId -> clientId の JSON。Authorizer 内で aud 突合に使う。
+    const tenantClientMap: Record<string, string> = {};
+    for (const [tenantId, client] of props.userPoolClients) {
+      tenantClientMap[tenantId] = client.userPoolClientId;
+    }
 
     const fn = new NodejsFunction(this, 'Function', {
       entry: path.join(AUTHORIZER_SRC, 'index.ts'),
@@ -51,7 +67,7 @@ export class TenantAuthorizer extends Construct {
       }),
       environment: {
         USER_POOL_ID: props.userPool.userPoolId,
-        USER_POOL_CLIENT_ID: props.userPoolClient.userPoolClientId,
+        TENANT_CLIENT_MAP: JSON.stringify(tenantClientMap),
         TENANT_CLAIM: props.tenantClaim ?? 'custom:tenantId',
         ORIGIN_VERIFY_SECRET:
           props.originVerifySecret.secretValue.unsafeUnwrap(),

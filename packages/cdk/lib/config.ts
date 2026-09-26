@@ -75,6 +75,106 @@ export function resolveConfig(
   };
 }
 
+/** テナント1件分の App Client 構成（tenantId とその callback オリジン）。 */
+export interface TenantClientDef {
+  readonly tenantId: string;
+  readonly callbackOrigins: readonly string[];
+}
+
+/**
+ * App-client per tenant 用に、テナントごとの callback オリジンを組み立てる。
+ *
+ * allowedOrigins の各エントリは次の3種類に分類する:
+ * - (a) いずれかの initialTenant について https://{tenant}.{baseDomain} と
+ *   完全一致するもの: そのテナントの client にだけ割り当てる。
+ * - (b) ホストが baseDomain 配下のテナント形式サブドメイン（{label}.{baseDomain}）
+ *   だが、initialTenants に登録が無い未登録テナントや表記揺れのもの:
+ *   どの client にも追加しない（拒否・スキップ）。共有 dev オリジン扱いにしない。
+ *   これにより tenant-a / tenant-b の全 client が別テナント URL（例:
+ *   https://tenant-c.example.com）へリダイレクトできてしまう問題を防ぐ。
+ * - (c) baseDomain 配下でないオリジン（http://localhost:5173 など）:
+ *   ローカル開発ではホスト名でテナントを判別できないため、共有 dev オリジンとして
+ *   全テナントの client に追加する。
+ *
+ * ホスト判定は部分文字列の一致に騙されないよう、URL コンストラクタで host を
+ * パースして行う。各テナントの callbackOrigins は
+ * 「自サブドメイン https://{tenantId}.{baseDomain} + 自テナントに一致した
+ * allowedOrigins エントリ + 共有 dev オリジン」を重複除去しつつ決定的な順序で組む。
+ */
+export function buildTenantClients(
+  config: Pick<
+    BackendApiConfig,
+    'baseDomain' | 'initialTenants' | 'allowedOrigins'
+  >,
+): TenantClientDef[] {
+  const { baseDomain, initialTenants, allowedOrigins } = config;
+
+  // initialTenant のサブドメインホスト（例: tenant-a.example.com）→ tenantId。
+  const tenantByHost = new Map(
+    initialTenants.map((t) => [`${t}.${baseDomain}`.toLowerCase(), t]),
+  );
+  const suffix = `.${baseDomain}`.toLowerCase();
+
+  // 各テナント固有に割り当てるオリジン（分類 (a)）。
+  const ownMatched = new Map<string, string[]>(
+    initialTenants.map((t) => [t, []]),
+  );
+  // 全テナント共通の dev オリジン（分類 (c)）。
+  const sharedDevOrigins: string[] = [];
+
+  for (const origin of allowedOrigins) {
+    const host = parseOriginHost(origin);
+    // host がパースできない、または baseDomain 配下のテナント形式でなければ (c)。
+    if (host === undefined || !isBaseDomainTenantHost(host, suffix)) {
+      sharedDevOrigins.push(origin);
+      continue;
+    }
+    // baseDomain 配下のテナント形式サブドメイン。
+    const tenantId = tenantByHost.get(host);
+    if (tenantId === undefined) {
+      // (b) 未登録テナント・表記揺れ。どの client にも追加しない（拒否）。
+      continue;
+    }
+    // (a) 該当テナントの client にだけ割り当てる。
+    ownMatched.get(tenantId)?.push(origin);
+  }
+
+  return initialTenants.map((tenantId) => {
+    const own = `https://${tenantId}.${baseDomain}`;
+    // 重複除去しつつ決定的な順序で:
+    // 自サブドメイン → 自テナント一致オリジン → 共有 dev オリジン。
+    const origins = Array.from(
+      new Set([own, ...(ownMatched.get(tenantId) ?? []), ...sharedDevOrigins]),
+    );
+    return { tenantId, callbackOrigins: origins };
+  });
+}
+
+/**
+ * オリジン文字列を URL としてパースし host（小文字）を返す。パースできなければ
+ * undefined。部分文字列一致による誤判定を避けるため URL コンストラクタを使う。
+ */
+function parseOriginHost(origin: string): string | undefined {
+  try {
+    return new URL(origin).host.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * host が baseDomain 配下の単一ラベルなテナント形式サブドメイン（{label}.{baseDomain}）
+ * かどうかを判定する。suffix は '.{baseDomain}'（小文字）。
+ */
+function isBaseDomainTenantHost(host: string, suffix: string): boolean {
+  if (!host.endsWith(suffix)) {
+    return false;
+  }
+  const label = host.slice(0, host.length - suffix.length);
+  // 単一ラベルのみテナント形式とみなす（さらにネストしたサブドメインは対象外）。
+  return label.length > 0 && !label.includes('.');
+}
+
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
