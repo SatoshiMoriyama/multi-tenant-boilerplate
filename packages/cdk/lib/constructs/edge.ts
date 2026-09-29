@@ -117,12 +117,29 @@ export class Edge extends Construct {
 
     // SPA アセット用 S3 バケット。パブリックアクセスは全面ブロックし、
     // CloudFront の OAC 経由でのみ読ませる。
+    //
+    // ライフサイクルは未完了マルチパートアップロードの中止のみ設定する。
+    // このバケットはバージョニングを有効にしていないため、
+    // noncurrentVersionExpiration と expiredObjectDeleteMarker は
+    // 対象となるオブジェクトが存在せず効果がない。意図的に設定しない。
+    //
+    // なお prune: false（後述の BucketDeployment）により、ハッシュ名が変わった
+    // 旧アセットは現行オブジェクトとして残り続ける。これはバージョンではないため
+    // 上記2ルールでは削除できない。現行オブジェクトの期限切れは、参照中のアセットを
+    // 消してサイトを壊す恐れがあるため、ここでは扱わない。
     this.siteBucket = new s3.Bucket(this, 'SiteBucket', {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
+      lifecycleRules: [
+        {
+          id: 'abort-incomplete-multipart-upload',
+          enabled: true,
+          abortIncompleteMultipartUploadAfter: Duration.days(7),
+        },
+      ],
     });
 
     // Origin Access Control（SigV4）。OAI ではなく OAC を使う。
