@@ -1,11 +1,11 @@
 import * as path from 'node:path';
-import { Duration, RemovalPolicy } from 'aws-cdk-lib/core';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
-import * as cognito from 'aws-cdk-lib/aws-cognito';
+import type * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import type * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import { Duration, RemovalPolicy } from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
 
 const AUTHORIZER_SRC = path.join(
@@ -29,6 +29,8 @@ export interface AuthorizerProps {
   readonly originVerifySecret: secretsmanager.ISecret;
   /** custom:tenantId 属性名（既定 custom:tenantId） */
   readonly tenantClaim?: string;
+  /** FunctionLogs の保持期間。未指定なら ONE_MONTH（30 日） */
+  readonly logRetention?: logs.RetentionDays;
 }
 
 /**
@@ -62,7 +64,7 @@ export class TenantAuthorizer extends Construct {
       architecture: lambda.Architecture.ARM_64,
       timeout: Duration.seconds(10),
       logGroup: new logs.LogGroup(this, 'FunctionLogs', {
-        retention: logs.RetentionDays.ONE_MONTH,
+        retention: props.logRetention ?? logs.RetentionDays.ONE_MONTH,
         removalPolicy: RemovalPolicy.DESTROY,
       }),
       environment: {

@@ -63,17 +63,20 @@ export class BackendStack extends Stack {
     const auth = new Auth(this, 'Auth', {
       authDomainPrefix: config.authDomainPrefix,
       tenantClients,
+      logRetention: config.logRetention,
     });
 
     const authorizer = new TenantAuthorizer(this, 'Authorizer', {
       userPool: auth.userPool,
       userPoolClients: auth.userPoolClients,
       originVerifySecret,
+      logRetention: config.logRetention,
     });
 
     const api = new Api(this, 'Api', {
       authorizer: authorizer.authorizer,
       allowedOrigins: config.allowedOrigins,
+      logRetention: config.logRetention,
     });
 
     this.restApi = api.restApi;

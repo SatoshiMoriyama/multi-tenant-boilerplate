@@ -36,6 +36,9 @@
 | `alertEmail` | - | コスト超過・異常検知の通知先メール。指定したときだけ `CostGovernanceStack` を作る |
 | `monthlyBudgetUsd` | - | 月次予算の上限（USD、既定 `100`）。`alertEmail` 指定時のみ有効 |
 | `createCostAnomalyMonitor` | - | Cost Anomaly Detection のモニターを作るか（既定 `true`）。`alertEmail` 指定時のみ有効 |
+| `logRetention` | - | Lambda ロググループ 3 つの保持日数（既定 `30`）。`9999` は無期限 |
+
+`logRetention` は CloudWatch Logs が受け付ける離散値のみ有効です（`1` `3` `5` `7` `14` `30` `60` `90` `120` `150` `180` `365` `400` `545` `731` `1096` `1827` `2192` `2557` `2922` `3288` `3653` `9999`）。それ以外を渡すと synth 時にエラーになります。dev / staging は `7`、本番は `90` 以上といった使い分けを想定しています。
 
 ## コマンド
 

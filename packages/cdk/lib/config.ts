@@ -1,3 +1,6 @@
+import type * as logs from 'aws-cdk-lib/aws-logs';
+import { RetentionDays } from 'aws-cdk-lib/aws-logs';
+
 /**
  * BackendStack / FrontendStack 共通の設定。既存リソースの参照や環境依存値は
  * cdk.json の context か、デプロイ時の -c で渡す。
@@ -47,6 +50,13 @@ export interface BackendApiConfig {
    * 別の手段で作成済みのアカウントでは false にしてデプロイ失敗を避ける。
    */
   readonly createCostAnomalyMonitor?: boolean;
+  /**
+   * 3 つの Lambda ロググループ（HandlerLogs / PreTokenTriggerLogs / FunctionLogs）
+   * の保持期間。未指定なら各コンストラクト側の既定 ONE_MONTH（30 日）。
+   * dev / staging は 7、本番は 90 以上といった使い分けを想定する。
+   * 9999 は無期限保持（RetentionInDays を出力しない）。
+   */
+  readonly logRetention?: logs.RetentionDays;
 }
 
 const DEFAULTS = {
@@ -96,6 +106,8 @@ export function resolveConfig(
       ? undefined
       : (asBoolean(getContext('createCostAnomalyMonitor')) ?? true);
 
+  const logRetention = resolveLogRetention(getContext('logRetention'));
+
   return {
     baseDomain,
     certificateArn,
@@ -106,8 +118,37 @@ export function resolveConfig(
     alertEmail,
     monthlyBudgetUsd,
     createCostAnomalyMonitor,
+    logRetention,
   };
 }
+
+/**
+ * CloudWatch Logs の保持期間を context から解決する。未指定なら undefined
+ * （各コンストラクトの既定 ONE_MONTH にフォールバック）。
+ *
+ * cdk.context.json では数値、`-c logRetention=7` では文字列で渡るため両方受ける。
+ * CloudWatch Logs が受け付ける値は離散的なので、RetentionDays の列挙値に
+ * 無い数値は synth 時に落とす（デプロイ時の API エラーまで持ち越さない）。
+ */
+function resolveLogRetention(raw: unknown): logs.RetentionDays | undefined {
+  if (raw === undefined || raw === null || raw === '') {
+    return undefined;
+  }
+  const value = typeof raw === 'number' ? raw : Number(raw);
+  if (!VALID_RETENTION_DAYS.has(value)) {
+    throw new Error(
+      `context 'logRetention' must be one of ${[...VALID_RETENTION_DAYS].join(', ')} (got ${String(raw)}). 9999 means infinite retention.`,
+    );
+  }
+  return value as logs.RetentionDays;
+}
+
+/** RetentionDays の数値メンバー（9999 = INFINITE を含む）。 */
+const VALID_RETENTION_DAYS: ReadonlySet<number> = new Set(
+  Object.values(RetentionDays).filter(
+    (v): v is number => typeof v === 'number',
+  ),
+);
 
 /** 月次予算の上限（USD）。未指定なら既定 100。正の有限数でなければエラー。 */
 const DEFAULT_MONTHLY_BUDGET_USD = 100;

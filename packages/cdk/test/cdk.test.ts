@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
+import { RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { BackendStack } from '../lib/backend-stack';
 import {
   type BackendApiConfig,
@@ -544,6 +545,118 @@ describe('resolveConfig（コストガバナンス context）', () => {
         monthlyBudgetUsd: 'abc',
       }),
     ).toThrow("context 'monthlyBudgetUsd' must be a positive number");
+  });
+});
+
+describe('CloudWatch ロググループの保持期間', () => {
+  /** config を差し替えて BackendStack のテンプレートを合成する。 */
+  function synthBackend(overrides: Partial<BackendApiConfig> = {}): Template {
+    const app = new cdk.App();
+    const stack = new BackendStack(app, 'TestBackend', {
+      config: { ...config, ...overrides },
+      env,
+    });
+    return Template.fromStack(stack);
+  }
+
+  const LOG_GROUP_IDS = [
+    'HandlerLogs',
+    'PreTokenTriggerLogs',
+    'FunctionLogs',
+  ] as const;
+
+  /** 論理 ID のプレフィックスごとに RetentionInDays を取り出す。 */
+  function retentionByLogGroup(template: Template) {
+    const groups = template.findResources('AWS::Logs::LogGroup');
+    const result: Record<string, unknown> = {};
+    for (const id of LOG_GROUP_IDS) {
+      const entry = Object.entries(groups).find(([logicalId]) =>
+        logicalId.includes(id),
+      );
+      if (entry === undefined) {
+        throw new Error(`log group ${id} not found`);
+      }
+      result[id] = entry[1].Properties?.RetentionInDays;
+    }
+    return result;
+  }
+
+  test('logRetention 未指定なら3つとも 30 日（既存の挙動）', () => {
+    const template = synthBackend({ logRetention: undefined });
+
+    template.resourceCountIs('AWS::Logs::LogGroup', 3);
+    expect(retentionByLogGroup(template)).toEqual({
+      HandlerLogs: 30,
+      PreTokenTriggerLogs: 30,
+      FunctionLogs: 30,
+    });
+  });
+
+  test('logRetention を指定すると3つすべてに反映される', () => {
+    const template = synthBackend({
+      logRetention: RetentionDays.ONE_WEEK,
+    });
+
+    expect(retentionByLogGroup(template)).toEqual({
+      HandlerLogs: 7,
+      PreTokenTriggerLogs: 7,
+      FunctionLogs: 7,
+    });
+  });
+
+  test('INFINITE では RetentionInDays を出力しない（無期限保持）', () => {
+    const template = synthBackend({ logRetention: RetentionDays.INFINITE });
+
+    // CDK は INFINITE のとき RetentionInDays を付けない。9999 という
+    // 不正な日数がテンプレートに出ていないことを確認する。
+    expect(retentionByLogGroup(template)).toEqual({
+      HandlerLogs: undefined,
+      PreTokenTriggerLogs: undefined,
+      FunctionLogs: undefined,
+    });
+  });
+});
+
+describe('resolveConfig（logRetention context）', () => {
+  const baseContext: Record<string, unknown> = {
+    certificateArn:
+      'arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000',
+    hostedZoneId: 'Z0000000000000000000',
+  };
+
+  function resolve(extra: Record<string, unknown> = {}) {
+    const merged = { ...baseContext, ...extra };
+    return resolveConfig((key) => merged[key]);
+  }
+
+  test('未指定なら undefined（コンストラクト側の既定に委ねる）', () => {
+    expect(resolve().logRetention).toBeUndefined();
+  });
+
+  test('cdk.context.json の数値と -c の文字列の両方を受ける', () => {
+    expect(resolve({ logRetention: 7 }).logRetention).toBe(
+      RetentionDays.ONE_WEEK,
+    );
+    expect(resolve({ logRetention: '90' }).logRetention).toBe(
+      RetentionDays.THREE_MONTHS,
+    );
+  });
+
+  test('RetentionDays に無い日数は synth 時にエラー', () => {
+    // CloudWatch Logs の保持期間は離散値。デプロイ時の API エラーではなく
+    // synth 時点で落とす。
+    expect(() => resolve({ logRetention: 42 })).toThrow(
+      "context 'logRetention' must be one of",
+    );
+    expect(() => resolve({ logRetention: 'abc' })).toThrow(
+      "context 'logRetention' must be one of",
+    );
+  });
+
+  test('9999（INFINITE）は有効値として通る', () => {
+    expect(resolve({ logRetention: 9999 }).logRetention).toBe(
+      RetentionDays.INFINITE,
+    );
   });
 });
 

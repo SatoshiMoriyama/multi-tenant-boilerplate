@@ -41,6 +41,8 @@ export interface AuthProps {
    * 空だと App Client を1つも作らない（誤設定なので synth 時に落とす）。
    */
   readonly tenantClients: readonly TenantClientConfig[];
+  /** PreTokenTriggerLogs の保持期間。未指定なら ONE_MONTH（30 日） */
+  readonly logRetention?: logs.RetentionDays;
 }
 
 /**
@@ -79,7 +81,7 @@ export class Auth extends Construct {
       architecture: lambda.Architecture.ARM_64,
       timeout: Duration.seconds(5),
       logGroup: new logs.LogGroup(this, 'PreTokenTriggerLogs', {
-        retention: logs.RetentionDays.ONE_MONTH,
+        retention: props.logRetention ?? logs.RetentionDays.ONE_MONTH,
         removalPolicy: RemovalPolicy.DESTROY,
       }),
       environment: {
