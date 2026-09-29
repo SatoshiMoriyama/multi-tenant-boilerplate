@@ -2,6 +2,7 @@
 import * as cdk from 'aws-cdk-lib/core';
 import { BackendStack } from '../lib/backend-stack';
 import { resolveConfig } from '../lib/config';
+import { CostGovernanceStack } from '../lib/cost-governance-stack';
 import { FrontendStack } from '../lib/frontend-stack';
 
 const app = new cdk.App();
@@ -39,3 +40,16 @@ const frontend = new FrontendStack(app, 'FrontendStack', {
 // Backend → Frontend のデプロイ順序を強制する（Frontend は Backend の
 // restApi / originVerifySecret を参照するため）。
 frontend.addDependency(backend);
+
+// コストガバナンスは alertEmail を渡したときだけ作る opt-in なスタック。
+// 予算と異常検知はアカウント単位のリソースなので、アプリケーションスタックとは
+// 分離してある（しきい値の変更で Backend / Frontend を再デプロイしないため）。
+// addDependency も張らない（参照関係が無く、デプロイ順序に意味がない）。
+if (config.alertEmail !== undefined) {
+  new CostGovernanceStack(app, 'CostGovernanceStack', {
+    alertEmail: config.alertEmail,
+    monthlyBudgetUsd: config.monthlyBudgetUsd ?? 100,
+    createAnomalyMonitor: config.createCostAnomalyMonitor ?? true,
+    env,
+  });
+}

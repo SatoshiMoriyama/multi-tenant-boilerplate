@@ -15,6 +15,12 @@
 
 `FrontendStack` は CloudFront オリジンとなる `restApi` と `originVerifySecret` を `BackendStack` から props（同一 app 内の cross-stack 参照）で受け取ります。`bin/cdk.ts` が `frontend.addDependency(backend)` を宣言するため、デプロイ順序は Backend → Frontend に固定されます。
 
+- **`CostGovernanceStack`**（コストガードレール、opt-in）。context の `alertEmail` を指定したときだけ作られます。
+  - `MonthlyBudget`: 月次コスト予算。予測 80% と実績 100% の 2 段でメール通知
+  - `ServiceAnomalyMonitor` / `ServiceAnomalySubscription`: Cost Anomaly Detection の AWS サービスモニターと日次サマリー通知
+
+`CostGovernanceStack` は他の 2 スタックを参照しません。予算のしきい値を変えてもアプリケーションリソースが再デプロイされないようにするためです。予算・異常検知はアカウント単位のリソースで、AWS 管理のサービスモニターはアカウントあたり 1 個までという上限があります。既に別の手段で作成済みのアカウントでは `createCostAnomalyMonitor=false` を渡して予算だけをデプロイしてください。
+
 ## context
 
 `cdk.context.json` に置くか、デプロイ時に `-c key=value` で渡します。
@@ -27,6 +33,9 @@
 | `initialTenants` | - | 用意するテナントのサブドメイン一覧（既定 `["app"]`） |
 | `allowedOrigins` | - | CORS / Hosted UI で許可するオリジン一覧（既定 `[]`） |
 | `authDomainPrefix` | - | Cognito Hosted UI のドメインプレフィックス（未指定なら Hosted UI を作らない） |
+| `alertEmail` | - | コスト超過・異常検知の通知先メール。指定したときだけ `CostGovernanceStack` を作る |
+| `monthlyBudgetUsd` | - | 月次予算の上限（USD、既定 `100`）。`alertEmail` 指定時のみ有効 |
+| `createCostAnomalyMonitor` | - | Cost Anomaly Detection のモニターを作るか（既定 `true`）。`alertEmail` 指定時のみ有効 |
 
 ## コマンド
 

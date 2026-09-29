@@ -3,7 +3,15 @@ import * as path from 'node:path';
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { BackendStack } from '../lib/backend-stack';
-import { type BackendApiConfig, buildTenantClients } from '../lib/config';
+import {
+  type BackendApiConfig,
+  buildTenantClients,
+  resolveConfig,
+} from '../lib/config';
+import {
+  CostGovernanceStack,
+  type CostGovernanceStackProps,
+} from '../lib/cost-governance-stack';
 import { FrontendStack } from '../lib/frontend-stack';
 
 const config: BackendApiConfig = {
@@ -371,6 +379,171 @@ describe('FrontendStack', () => {
     expect(JSON.stringify(originVerify?.HeaderValue)).toContain(
       'Fn::ImportValue',
     );
+  });
+});
+
+describe('CostGovernanceStack', () => {
+  function synthGovernance(
+    overrides: Partial<CostGovernanceStackProps> = {},
+  ): Template {
+    const app = new cdk.App();
+    const stack = new CostGovernanceStack(app, 'TestCostGovernance', {
+      alertEmail: 'cost-alerts@example.com',
+      monthlyBudgetUsd: 100,
+      createAnomalyMonitor: true,
+      env,
+      ...overrides,
+    });
+    return Template.fromStack(stack);
+  }
+
+  test('月次予算が予測80% / 実績100%の2段で通知する', () => {
+    const template = synthGovernance();
+
+    template.hasResourceProperties('AWS::Budgets::Budget', {
+      Budget: {
+        BudgetName: 'TestCostGovernance-monthly-budget',
+        BudgetType: 'COST',
+        TimeUnit: 'MONTHLY',
+        BudgetLimit: { Amount: 100, Unit: 'USD' },
+      },
+      NotificationsWithSubscribers: [
+        {
+          Notification: {
+            NotificationType: 'FORECASTED',
+            ComparisonOperator: 'GREATER_THAN',
+            Threshold: 80,
+            ThresholdType: 'PERCENTAGE',
+          },
+          Subscribers: [
+            {
+              SubscriptionType: 'EMAIL',
+              Address: 'cost-alerts@example.com',
+            },
+          ],
+        },
+        {
+          Notification: {
+            NotificationType: 'ACTUAL',
+            ComparisonOperator: 'GREATER_THAN',
+            Threshold: 100,
+            ThresholdType: 'PERCENTAGE',
+          },
+          Subscribers: [
+            {
+              SubscriptionType: 'EMAIL',
+              Address: 'cost-alerts@example.com',
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  test('SERVICE ディメンションの AWS 管理モニターとサブスクリプションを作る', () => {
+    const template = synthGovernance();
+
+    template.hasResourceProperties('AWS::CE::AnomalyMonitor', {
+      MonitorName: 'TestCostGovernance-service-monitor',
+      MonitorType: 'DIMENSIONAL',
+      MonitorDimension: 'SERVICE',
+    });
+    template.hasResourceProperties('AWS::CE::AnomalySubscription', {
+      SubscriptionName: 'TestCostGovernance-anomaly-subscription',
+      Frequency: 'DAILY',
+      Subscribers: [{ Type: 'EMAIL', Address: 'cost-alerts@example.com' }],
+    });
+  });
+
+  test('サブスクリプションは Threshold ではなく ThresholdExpression を持つ', () => {
+    const template = synthGovernance();
+
+    // Threshold（非推奨）と ThresholdExpression は排他。両方指定すると
+    // CloudFormation が検証エラーになるため、後者のみであることを検証する。
+    const subscriptions = template.findResources(
+      'AWS::CE::AnomalySubscription',
+    );
+    const properties = Object.values(subscriptions).map((r) => r.Properties);
+    expect(properties).toHaveLength(1);
+    expect(properties[0]).not.toHaveProperty('Threshold');
+    expect(JSON.parse(properties[0].ThresholdExpression)).toEqual({
+      Dimensions: {
+        Key: 'ANOMALY_TOTAL_IMPACT_ABSOLUTE',
+        MatchOptions: ['GREATER_THAN_OR_EQUAL'],
+        Values: ['10'],
+      },
+    });
+  });
+
+  test('createAnomalyMonitor=false なら予算だけ作り異常検知は作らない', () => {
+    const template = synthGovernance({ createAnomalyMonitor: false });
+
+    // AWS 管理のサービスモニターはアカウント1個までなので、既存がある環境では
+    // 予算のみをデプロイできる必要がある。
+    template.resourceCountIs('AWS::Budgets::Budget', 1);
+    template.resourceCountIs('AWS::CE::AnomalyMonitor', 0);
+    template.resourceCountIs('AWS::CE::AnomalySubscription', 0);
+  });
+
+  test('アプリケーションスタックのリソースを一切持たない', () => {
+    const template = synthGovernance();
+
+    // BackendStack / FrontendStack と分離されていることの担保。
+    template.resourceCountIs('AWS::Lambda::Function', 0);
+    template.resourceCountIs('AWS::CloudFront::Distribution', 0);
+    template.resourceCountIs('AWS::Cognito::UserPool', 0);
+    template.resourceCountIs('AWS::S3::Bucket', 0);
+  });
+});
+
+describe('resolveConfig（コストガバナンス context）', () => {
+  const baseContext: Record<string, unknown> = {
+    certificateArn:
+      'arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000',
+    hostedZoneId: 'Z0000000000000000000',
+  };
+
+  function resolve(extra: Record<string, unknown> = {}) {
+    const merged = { ...baseContext, ...extra };
+    return resolveConfig((key) => merged[key]);
+  }
+
+  test('alertEmail 未指定ならコストガバナンス設定は undefined', () => {
+    const resolved = resolve();
+
+    expect(resolved.alertEmail).toBeUndefined();
+    expect(resolved.monthlyBudgetUsd).toBeUndefined();
+    expect(resolved.createCostAnomalyMonitor).toBeUndefined();
+  });
+
+  test('alertEmail 指定時は予算が既定 100 / モニター作成が既定 true', () => {
+    const resolved = resolve({ alertEmail: 'cost-alerts@example.com' });
+
+    expect(resolved.monthlyBudgetUsd).toBe(100);
+    expect(resolved.createCostAnomalyMonitor).toBe(true);
+  });
+
+  test('-c で文字列として渡った値を数値 / 真偽値に解釈する', () => {
+    const resolved = resolve({
+      alertEmail: 'cost-alerts@example.com',
+      monthlyBudgetUsd: '250',
+      createCostAnomalyMonitor: 'false',
+    });
+
+    expect(resolved.monthlyBudgetUsd).toBe(250);
+    expect(resolved.createCostAnomalyMonitor).toBe(false);
+  });
+
+  test('monthlyBudgetUsd が正の数でなければエラー', () => {
+    expect(() =>
+      resolve({ alertEmail: 'cost-alerts@example.com', monthlyBudgetUsd: '0' }),
+    ).toThrow("context 'monthlyBudgetUsd' must be a positive number");
+    expect(() =>
+      resolve({
+        alertEmail: 'cost-alerts@example.com',
+        monthlyBudgetUsd: 'abc',
+      }),
+    ).toThrow("context 'monthlyBudgetUsd' must be a positive number");
   });
 });
 

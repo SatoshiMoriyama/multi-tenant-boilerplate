@@ -28,6 +28,25 @@ export interface BackendApiConfig {
    * アカウント × リージョンで一意である必要がある。未指定なら Hosted UI を作らない。
    */
   readonly authDomainPrefix?: string;
+  /**
+   * コスト超過・異常検知の通知先メールアドレス。
+   * 指定したときだけ CostGovernanceStack を作る（未指定ならスタック自体を作らない）。
+   * 個人のアドレスではなくチームの配信リストを指定する。購読が古くなると
+   * ガードレールが無言で失効するため。
+   */
+  readonly alertEmail?: string;
+  /**
+   * 月次予算の上限（USD）。alertEmail 指定時のみ有効。
+   * 既定 100 はプレースホルダで、実際の値は Cost Explorer の 30 日実績を
+   * ベースラインにして決める。低すぎると誤検知でアラート疲れを招く。
+   */
+  readonly monthlyBudgetUsd?: number;
+  /**
+   * Cost Anomaly Detection の AWS サービスモニターを作るか（既定 true）。
+   * AWS 管理のサービスモニターはアカウントあたり 1 個までなので、既に
+   * 別の手段で作成済みのアカウントでは false にしてデプロイ失敗を避ける。
+   */
+  readonly createCostAnomalyMonitor?: boolean;
 }
 
 const DEFAULTS = {
@@ -65,6 +84,18 @@ export function resolveConfig(
   ];
   const authDomainPrefix = asString(getContext('authDomainPrefix'));
 
+  // コストガバナンスは opt-in。alertEmail が無ければ関連 context を一切読まない
+  // （既存の BackendStack / FrontendStack は alertEmail 無しで synth できる）。
+  const alertEmail = asString(getContext('alertEmail'));
+  const monthlyBudgetUsd =
+    alertEmail === undefined
+      ? undefined
+      : resolveMonthlyBudgetUsd(getContext('monthlyBudgetUsd'));
+  const createCostAnomalyMonitor =
+    alertEmail === undefined
+      ? undefined
+      : (asBoolean(getContext('createCostAnomalyMonitor')) ?? true);
+
   return {
     baseDomain,
     certificateArn,
@@ -72,7 +103,27 @@ export function resolveConfig(
     initialTenants,
     allowedOrigins,
     authDomainPrefix,
+    alertEmail,
+    monthlyBudgetUsd,
+    createCostAnomalyMonitor,
   };
+}
+
+/** 月次予算の上限（USD）。未指定なら既定 100。正の有限数でなければエラー。 */
+const DEFAULT_MONTHLY_BUDGET_USD = 100;
+
+function resolveMonthlyBudgetUsd(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === '') {
+    return DEFAULT_MONTHLY_BUDGET_USD;
+  }
+  // -c monthlyBudgetUsd=200 は文字列で渡るため数値化する。
+  const value = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(
+      "context 'monthlyBudgetUsd' must be a positive number (USD)",
+    );
+  }
+  return value;
 }
 
 /** テナント1件分の App Client 構成（tenantId とその callback オリジン）。 */
@@ -182,6 +233,23 @@ function asString(value: unknown): string | undefined {
 function asStringArray(value: unknown): string[] | undefined {
   if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
     return value as string[];
+  }
+  return undefined;
+}
+
+/**
+ * context の真偽値。`-c key=false` は文字列 'false' で渡るため文字列も受ける。
+ * 解釈できない値は undefined（呼び出し側の既定値にフォールバック）。
+ */
+function asBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
   }
   return undefined;
 }
