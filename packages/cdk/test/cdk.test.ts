@@ -142,6 +142,25 @@ describe('FrontendStack', () => {
     frontendTemplate.resourceCountIs('AWS::CloudFront::Function', 3);
   });
 
+  test('SPA バケットに未完了マルチパートアップロードの中止ルールがある', () => {
+    const { frontendTemplate } = synth();
+
+    // バージョニング無効のバケットなので、設定するのは MPU 中止ルールのみ。
+    // NoncurrentVersionExpiration / ExpiredObjectDeleteMarker は効果がないため
+    // 持たせない（意図しない追加を検知する）。
+    frontendTemplate.hasResourceProperties('AWS::S3::Bucket', {
+      LifecycleConfiguration: {
+        Rules: [
+          {
+            Id: 'abort-incomplete-multipart-upload',
+            Status: 'Enabled',
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
+          },
+        ],
+      },
+    });
+  });
+
   test('マルチテナントディストリビューションである', () => {
     const { frontendTemplate } = synth();
     frontendTemplate.hasResourceProperties('AWS::CloudFront::Distribution', {
