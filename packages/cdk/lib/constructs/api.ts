@@ -13,6 +13,8 @@ export interface ApiProps {
   readonly authorizer: apigateway.IAuthorizer;
   /** CORS で許可するオリジンの明示リスト（Hono の cors ミドルウェアへ渡す） */
   readonly allowedOrigins: readonly string[];
+  /** HandlerLogs の保持期間。未指定なら ONE_MONTH（30 日） */
+  readonly logRetention?: logs.RetentionDays;
 }
 
 /**
@@ -37,7 +39,7 @@ export class Api extends Construct {
       timeout: Duration.seconds(29),
       memorySize: 256,
       logGroup: new logs.LogGroup(this, 'HandlerLogs', {
-        retention: logs.RetentionDays.ONE_MONTH,
+        retention: props.logRetention ?? logs.RetentionDays.ONE_MONTH,
         removalPolicy: RemovalPolicy.DESTROY,
       }),
       // テナント分離モード（関数作成時のみ設定可能）。テナント単位に実行環境を分離する。

@@ -114,6 +114,7 @@ context は `cdk.context.json` に置くか、デプロイ時に `-c` で渡し�
 | `alertEmail` | - | コスト超過・異常検知の通知先メール。指定したときだけ `CostGovernanceStack` を作る |
 | `monthlyBudgetUsd` | - | 月次予算の上限（USD、既定 `100`）。`alertEmail` 指定時のみ有効 |
 | `createCostAnomalyMonitor` | - | Cost Anomaly Detection のモニターを作るか（既定 `true`）。`alertEmail` 指定時のみ有効 |
+| `logRetention` | - | Lambda ロググループ 3 つの保持日数（既定 `30`）。`9999` は無期限 |
 
 デプロイが終わると Outputs に、`BackendStack` から `UserPoolId` / `UserPoolClientId` / `RestApiId`（`authDomainPrefix` 指定時は `HostedUiDomain` も）が、`FrontendStack` から `DistributionId` / `SiteBucketName` が出ます。動作確認の手順は `blog_content/blog.md` の「動かしてみる」を参照してください。
 
