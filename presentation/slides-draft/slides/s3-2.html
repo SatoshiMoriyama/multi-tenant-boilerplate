@@ -1,0 +1,14 @@
+<section id="s3-2" data-transition="fade" style="background:#FAF9FA;color:#161313;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<h2 style="font-size:68px;font-weight:700;line-height:1.2;color:#C50E2F">境界を引ける場所は多層（Defense in Depth）</h2>
+<ol style="font-size:36px;line-height:1.7">
+<li>エッジ（CloudFront）</li>
+<li>認証（Cognito）</li>
+<li>API（Authorizer）</li>
+<li>データ（DynamoDB キー / RLS）</li>
+<li>インフラ（アカウント分離）</li>
+</ol>
+<p style="font-size:40px;font-weight:700">1 か所で足りることはない。多層で引く。</p>
+<aside>境界を引ける場所は1つではない。どこで引くか、どの強さで引くかが設計の中心。
+多層で引く（Defense in Depth）が原則。
+この後の後半（5章〜）は、この各レイヤーに対応する AWS サービスを順に見ていく、と予告。</aside>
+</section>

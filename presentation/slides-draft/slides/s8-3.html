@@ -1,0 +1,12 @@
+<section id="s8-3" data-transition="fade" style="background:#FAF9FA;color:#161313;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<h2 style="font-size:68px;font-weight:700;line-height:1.2;color:#C50E2F">データレイヤーまとめ（強制点の比較）</h2>
+<table style="font-size:32px;line-height:1.5">
+<tr><th style="width:20%">ストア</th><th style="width:46%">Pool 時の分離強制点</th><th style="width:34%">強制のレイヤー</th></tr>
+<tr><td>DynamoDB</td><td>パーティションキー先頭 tenantId ＋ dynamodb:LeadingKeys</td><td>IAM（プラットフォーム）</td></tr>
+<tr><td>Aurora（PostgreSQL）</td><td>行レベルセキュリティ（RLS）＋ セッション変数</td><td>DB エンジン</td></tr>
+<tr><td>S3</td><td>テナント別プレフィックス ＋ Access Grants / Access Points</td><td>IAM / S3</td></tr>
+</table>
+<p style="font-size:36px;line-height:1.6;font-weight:700">データレイヤーの共通原則: 分離の強制点をアプリの外（IAM / DB エンジン）に置く。</p>
+<aside>S3: 共有バケット内のテナント別プレフィックス（s3://bucket/&lt;tenantId&gt;/...）＋ STS スコープ付き資格情報（トークンベンディングマシン）が基本形。新しめの選択肢に S3 Access Grants / Access Points。IAM ポリシー肥大化を解きにいける。
+データレイヤーの共通原則: 分離の強制点をアプリの外（IAM / DB エンジン）に置く。アプリのクエリを信用に頼らない。</aside>
+</section>

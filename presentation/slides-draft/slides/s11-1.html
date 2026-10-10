@@ -1,0 +1,12 @@
+<section id="s11-1" data-transition="fade" style="background:#C50E2F;color:#FAF9FA;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<h2 style="font-size:72px;font-weight:700;line-height:1.2">まとめ</h2>
+<ol style="font-size:36px;line-height:1.6">
+<li>核心は「テナント境界をどこで強制するか」。レイヤーごとに担うサービスが違う</li>
+<li>貫く主語は tenantId: Cognito（発生）→ IAM ABAC（リソース縛り）→ Lambda 分離モード（実行環境）→ DynamoDB LeadingKeys / Aurora RLS（データ）→ CloudFront（振り分け）</li>
+<li>強制点はできるだけアプリの外（IAM / DB エンジン / プラットフォーム）に。組み立ての骨格は SBT-AWS</li>
+</ol>
+<p style="font-size:32px;line-height:1.6">5 章のレイヤー地図を再掲（今日見たのはこの中の代表）／ リポジトリ URL ＋ 一次情報リンク集</p>
+<aside>3点に絞って締める。1つの tenantId が全レイヤーを通る、という絵をもう一度見せる。
+アプリの正しさに頼らず、強制点を外に置くのが共通原則。
+深掘りしたい人向けに一次情報リンク集を案内。</aside>
+</section>

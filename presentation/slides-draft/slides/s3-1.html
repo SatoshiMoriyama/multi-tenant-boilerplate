@@ -1,0 +1,10 @@
+<section id="s3-1" data-transition="fade" style="background:#161313;color:#FAF9FA;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;justify-content:center;gap:48px">
+<p style="font-size:32px;font-weight:700;color:#FFA600">3. 何が難しいか</p>
+<h2 style="font-size:96px;font-weight:700;line-height:1.25">最重要課題 ＝<br>テナント境界の強制</h2>
+<p style="font-size:40px;line-height:1.6">「テナント A のユーザーがテナント B のデータに絶対に触れない」を<br><b>どこで・誰が</b> 保証するか</p>
+<p style="font-size:32px;line-height:1.6">緩いと起きる 2 つのリスク: クロステナントアクセス ／ ノイジーネイバー</p>
+<aside>2章で「なぜ生まれたか」を押さえた。ここから技術の話。全テナント同居で生まれた最重要課題を1つに絞る。
+クロステナントアクセス = 他顧客のデータに到達（情報漏えい）。ノイジーネイバー = 1テナントの負荷・暴走が他に波及。
+どちらも1顧客の問題が全顧客に飛び火する。同居モデル特有のリスク。
+補足: テナント = 契約単位の顧客組織。ユーザーはテナントに属する。「テナント認証 ≠ テナント分離」。ログインできること（認証）と他テナントに触れないこと（分離）は別物。</aside>
+</section>

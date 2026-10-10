@@ -1,0 +1,12 @@
+<section id="s12-1" data-transition="fade" style="background:#161313;color:#FAF9FA;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;justify-content:center;gap:40px">
+<h2 style="font-size:160px;font-weight:700;line-height:1.1">Q&amp;A</h2>
+<p style="font-size:36px;line-height:1.6">https://github.com/SatoshiMoriyama/multi-tenant-boilerplate</p>
+<p style="font-size:36px;line-height:1.6">連絡先: [メールアドレス / SNS]</p>
+<aside>想定質問と答えの控え（ノート）
+Q: 結局どのサービスから手をつければ? A: 認証（Cognito で tenantId を発生させる）が起点。ここが決まらないと下流が全部宙に浮く。
+Q: Lambda テナント分離モードは常に有効化すべき? A: いや。実行環境分離はコールドスタートとコストが増える。メモリ越し汚染が許容できないワークロードで使う。多数テナント×低頻度だと効きが悪い。
+Q: DynamoDB と Aurora どっちを既定に? A: アクセスパターンが固まっていて結合が要らないなら DynamoDB（LeadingKeys で分離が IAM に落ちる）。強整合・結合・トランザクションが要るなら Aurora + RLS。
+Q: ABAC の session tag はどこから来る? A: Cognito の pre token generation trigger で JWT に載せた tenantId を、STS の AssumeRoleWithWebIdentity でセッションタグ化する。認証と IAM が繋がる。
+Q: SBT-AWS は本番で使える? A: awslabs の OSS で CDK ベース。control / application plane の分離を強制してくれる。規模が出るなら最初から乗る価値がある。
+Q: 全部 Pool にすべき? A: いや。大口テナントだけ Silo、他は Pool のハイブリッドが現実的。レイヤーごとに使い分けてよい。</aside>
+</section>

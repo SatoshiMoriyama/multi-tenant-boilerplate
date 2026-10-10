@@ -1,0 +1,11 @@
+<section id="s9-2" data-transition="fade" style="background:#FAF9FA;color:#161313;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<h2 style="font-size:68px;font-weight:700;line-height:1.2;color:#C50E2F">周辺 ── WAF / Route 53 ＋ ACM / SES</h2>
+<ul style="font-size:36px;line-height:1.6">
+<li>WAF: レートベースルール ＋ scope-down でテナント / ティア別スロットリング（CDN 経由はヘッダー内 IP を集約キーに）</li>
+<li>Route 53 ＋ ACM: vanity ドメインで高速オンボーディング、BYOD 対応。CloudFront 用 ACM は us-east-1 必須</li>
+<li>SES テナント機能: TenantName（SMTP は X-SES-TENANT）で送信レピュテーションをテナント別に隔離</li>
+</ul>
+<aside>WAF はエッジでのノイジーネイバー対策。
+ACM の us-east-1 必須はハマりどころ。
+SES: 1テナントの苦情・バウンスが他テナントの到達率を巻き込まない。地味だが SaaS で効く。</aside>
+</section>

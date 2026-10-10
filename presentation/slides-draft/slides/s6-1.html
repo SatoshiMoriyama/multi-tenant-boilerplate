@@ -1,0 +1,16 @@
+<section id="s6-1" data-transition="fade" style="background:#161313;color:#FAF9FA;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;gap:44px">
+<p style="font-size:32px;font-weight:700;color:#FFA600">6. 認証・認可: 信用できる tenantId はどこで作るか</p>
+<h2 style="font-size:68px;font-weight:700;line-height:1.2">Cognito ── テナント分離の 3 方式</h2>
+<table style="font-size:30px;line-height:1.4">
+<tr><th style="width:24%">方式</th><th style="width:40%">特徴</th><th style="width:36%">分離の強さ / 運用</th></tr>
+<tr><td>user-pool</td><td>テナントごとに別プール（上限デフォルト 1,000）</td><td>強い / 重い（Silo 寄り）</td></tr>
+<tr><td>app-client</td><td>単一プール内でテナント別クライアント</td><td>中 / 軽い（Pool 寄り）</td></tr>
+<tr><td>custom scope（M2M）</td><td>リソースサーバのカスタムスコープ</td><td>—</td></tr>
+</table>
+<p style="font-size:36px;line-height:1.6;font-weight:700">どの方式でも肝: pre token generation Lambda trigger でトークンに tenantId を注入</p>
+<aside>Cognito は OIDC の IdP。公式が3方式を挙げる。選択がそのまま分離の強さとコストに効く。
+user-pool はプール数の上限とオンボーディングの重さがトレードオフ。app-client は単一ユーザープロファイル基盤を保ちつつ callback/logout URL をテナントのオリジンに限定。
+肝は pre token generation trigger での tenantId クレーム注入。これが「信用できる tenantId」の発生源。https://aws.amazon.com/tags 名前空間に載せれば後段の IAM ABAC（session tags）へ橋渡しできる。
+設計の勘所: tenantId を載せる属性は不変（mutable: false）。可変だとユーザーが書き換えて別テナントのトークンを得られる。所属は作成時に確定し以後変えさせない。
+ボイラープレートの実例: app-client 方式を採用。1 User Pool 共有、テナントごとに App Client を分けて callback を自テナントに限定。custom:tenantId は mutable: false。</aside>
+</section>

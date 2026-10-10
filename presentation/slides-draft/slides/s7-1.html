@@ -1,0 +1,15 @@
+<section id="s7-1" data-transition="fade" style="background:#161313;color:#FAF9FA;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;gap:44px">
+<p style="font-size:32px;font-weight:700;color:#FFA600">7. コンピュート・API: tenantId を実行環境まで持ち込む</p>
+<h2 style="font-size:68px;font-weight:700;line-height:1.2">Lambda テナント分離モード（2025-11 新機能）</h2>
+<ul style="font-size:36px;line-height:1.6">
+<li>OFF: 1 つの実行環境を複数テナントが使い回す（メモリ越しの汚染リスク）</li>
+<li>ON: X-Amz-Tenant-Id ごとに Firecracker 実行環境が分かれる</li>
+</ul>
+<p style="font-size:34px;line-height:1.6">設定: TenancyConfig.TenantIsolationMode: PER_TENANT（関数作成時のみ）</p>
+<p style="font-size:34px;line-height:1.6">取得: context.tenantId ／ JSON ログに tenantId 自動付与</p>
+<aside>Pool 型 Lambda の長年の弱点は、同一実行環境が複数テナントで再利用されメモリに前テナントのデータが残りうること。これに AWS が 2025-11 に正面から回答したのがテナント分離モード。
+有効化すると Invoke 時に tenant-id（API では X-Amz-Tenant-Id ヘッダー）が必須になり、同一テナントの実行環境だけが再利用される。省略すると InvalidParameterValueException。
+トレードオフ①: 全テナントが同一実行ロールを共有する点は変わらない。細粒度権限が要るなら上流からテナントスコープの一時クレデンシャル（STS）を渡す。
+トレードオフ②: 実行環境を分けるのでコールドスタート頻度とコストが増える。多数テナント×低頻度だと効きが悪い。
+補足: Powertools for AWS Lambda で Logger / Tracer / Metrics に tenantId を一貫注入できる。</aside>
+</section>

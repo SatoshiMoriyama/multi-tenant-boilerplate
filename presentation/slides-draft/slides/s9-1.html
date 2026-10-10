@@ -1,0 +1,14 @@
+<section id="s9-1" data-transition="fade" style="background:#FAF9FA;color:#161313;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<p style="font-size:32px;font-weight:700;color:#C50E2F">9. 配信・エッジ: テナントをどう振り分けるか</p>
+<h2 style="font-size:64px;font-weight:700;line-height:1.2">CloudFront マルチテナントディストリビューション</h2>
+<p style="font-size:36px;line-height:1.6;font-weight:700">{tenant}.example.com → connection group → distribution tenant（ブループリント継承）→ テナント別オリジン</p>
+<ul style="font-size:36px;line-height:1.6">
+<li>3 要素: multi-tenant distribution（ブループリント）／ distribution tenant ／ connection group</li>
+<li>ワイルドカードサブドメイン ＋ ワイルドカード証明書を 1 回設定 → テナント追加時に DNS も証明書も不要</li>
+<li>Host ヘッダー分岐は CloudFront Functions / Lambda@Edge で（ネイティブ分岐は path pattern のみ）</li>
+</ul>
+<aside>フロント配信とテナントルーティングの要。CloudFront のネイティブなマルチテナント機能（比較的新しい）。
+ブループリントが共有設定（キャッシュ / セキュリティ / オリジン）の親、distribution tenant が origin_path: "/{{tenantName}}" 等でオリジンを振り分け、connection group がルーティングエンドポイント（サブドメインを CNAME で向ける）。
+ルーティング解決は初回のみ実行してキャッシュが推奨（コスト / 性能）。
+ボイラープレートの実例: この構成そのもの。CloudFront Function が Host から tenantId を解決し /tenant-config.json をテナント分だけ動的生成。単一 dist を全テナントに配信しつつ clientId 等を実行時解決。</aside>
+</section>

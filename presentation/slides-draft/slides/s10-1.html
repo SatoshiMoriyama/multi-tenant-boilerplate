@@ -1,0 +1,12 @@
+<section id="s10-1" data-transition="fade" style="background:#161313;color:#FAF9FA;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<p style="font-size:32px;font-weight:700;color:#FFA600">10. 運用・フレームワーク: 見える化と組み立ての土台</p>
+<h2 style="font-size:68px;font-weight:700;line-height:1.2">コスト配分タグ ＋ Budgets / Cost Anomaly Detection</h2>
+<p style="font-size:36px;line-height:1.6">コスト配分タグ（tenant_id）→ Cost Categories → Budgets（ティア別上限アラート）／ Cost Anomaly Detection（ML 異常検知）</p>
+<ul style="font-size:36px;line-height:1.6">
+<li>タグは有効化後の期間しか追跡されない（遡及なし）。最初に入れる</li>
+<li>Pool 型は split charge で共有コストを按分</li>
+</ul>
+<aside>Pool 型の宿命: 共有リソースのコストが「どのテナントの分か」見えない。起点はコスト配分タグ。
+タグをリソースに付けて有効化し、Cost Categories でテナント構造にマッピング、Budgets と Cost Anomaly Detection に流す。
+遡及なしなので最初に入れておくのが鉄則。</aside>
+</section>

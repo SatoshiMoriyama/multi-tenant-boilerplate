@@ -1,0 +1,13 @@
+<section id="s10-2" data-transition="fade" style="background:#FAF9FA;color:#161313;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<h2 style="font-size:68px;font-weight:700;line-height:1.2;color:#C50E2F">SBT-AWS ── control / application plane</h2>
+<p style="font-size:36px;line-height:1.6;font-weight:700">control plane（非マルチテナント / 管理面）↔ EventBridge ↔ application plane（マルチテナント / ワークロード）</p>
+<ul style="font-size:36px;line-height:1.6">
+<li>SBT-AWS（@cdklabs/sbt-aws、awslabs の OSS、CDK ベース）</li>
+<li>提供コンストラクト: ControlPlane / CoreApplicationPlane / CognitoAuth / ProvisioningScriptJob / MockBillingProvider</li>
+</ul>
+<aside>ここまで個別サービスを見てきたが、それらを組み立てる骨格が AWS 公式から出ている。中核概念は control plane と application plane の分離（SaaS Architecture Fundamentals 白書）。
+control plane = オンボーディング・テナント管理・認証・課金・メトリクス・管理ユーザー（全テナント横断で非マルチテナント）。application plane = テナントが使うワークロード（マルチテナント）。
+両プレーンは EventBridge（onboardingRequest / provisionSuccess 等）で疎結合に繋がり、片方だけ独立デプロイできる。
+位置づけ: 今日紹介したサービス群を「どう束ねてオンボーディング / 運用まで回すか」の設計済みテンプレート。CDK プロジェクトなら親和性が高い。
+「自分で全部組むか SBT に乗るか」は規模とチームによる。乗ると control / application の切り分けを強制され設計の軸がぶれにくい。</aside>
+</section>

@@ -1,0 +1,10 @@
+<section id="s6-2" data-transition="fade" style="background:#FAF9FA;color:#161313;font-family:'Noto Sans JP', sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<h2 style="font-size:68px;font-weight:700;line-height:1.2;color:#C50E2F">IAM + STS ── プラットフォームで強制（ABAC）</h2>
+<p style="font-size:40px;line-height:1.7;font-weight:700">JWT の tenantId → STS session tag → IAM ポリシー ${aws:PrincipalTag/TenantID} → リソースがテナントスコープに限定</p>
+<p style="font-size:34px;line-height:1.6">例: arn:aws:s3:::bucket/${aws:PrincipalTag/TenantID}/*</p>
+<p style="font-size:34px;line-height:1.6">強み: ロールが増えない（1 万テナントでもロール 1 本、タグで動的にスコープ）</p>
+<aside>Cognito で載せた tenantId を AWS プラットフォーム側の実行時強制に落とすのが IAM + STS。アプリのバグがあっても IAM が最後に止める層。
+公式の3方式（動的生成ポリシー / RBAC / ABAC）のうち本命は ABAC。
+AssumeRole + session tags、または JWT の https://aws.amazon.com/tags クレームを使う AssumeRoleWithWebIdentity で TenantID をセッションタグ化。
+「自テナントのプレフィックスしか触れない」がポリシー評価の時点で強制される。</aside>
+</section>
